@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# uv-init [DIR]  — scaffold a uv project wired to mise + direnv.
+#
+# Reproduces the "Project with uv" steps from
+# https://www.gbb.is/posts/2024-07-24-mise-direnv-and-python/ :
+#   mkdir + cd, pin uv in mise config, mise install, write .envrc, direnv allow
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+dir="${1:-.}"
+
+mkdir -p "$dir"
+cd "$dir"
+
+copy() {  # copy SRC DST unless DST exists
+    if [ -e "$2" ]; then
+        echo "uv-init: $2 exists, leaving it alone" >&2
+    else
+        cp "$1" "$2" && echo "uv-init: wrote $2"
+    fi
+}
+copy "$here/templates/mise.toml" mise.toml
+copy "$here/templates/envrc" .envrc
+
+mise install
+direnv allow .
+echo "uv-init: done — cd $(pwd) (or run 'direnv reload') to activate"

@@ -1,0 +1,7 @@
+# direnv global config (symlinked to $XDG_CONFIG_HOME/direnv/direnv.toml)
+[global]
+# `uv sync` / interpreter downloads can take longer than direnv's 5s default
+# before it warns that the .envrc is slow.
+warn_timeout = "1m"
+# Don't print the full list of exported variables on every cd.
+hide_env_diff = true

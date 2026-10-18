@@ -1,0 +1,18 @@
+# Global mise config (symlinked to $XDG_CONFIG_HOME/mise/config.toml)
+#
+# Only tooling lives here. Python interpreters are installed per project by uv
+# (`uv python install`, driven by .python-version / pyproject.toml), as in
+# https://www.gbb.is/posts/2024-07-24-mise-direnv-and-python/
+#
+# Projects pin their own versions in a local mise.toml (see templates/mise.toml);
+# those override these.
+
+[tools]
+uv = "latest"
+direnv = "latest"
+# python = "3.13"   # uncomment to have a mise-managed default interpreter
+
+[settings]
+# direnv (`use mise` in .envrc) owns environment activation. Keep mise from
+# also trying to auto-activate venvs so the two never fight over PATH.
+python.uv_venv_auto = false

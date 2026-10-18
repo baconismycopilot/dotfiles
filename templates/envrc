@@ -1,0 +1,2 @@
+use mise    # must be the first line: loads tools pinned in mise.toml
+layout uv   # uv python install + .venv + uv sync, then activates .venv
