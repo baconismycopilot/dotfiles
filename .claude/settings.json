@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r '.tool_input.command // \"\"'); case \"$cmd\" in *\"git push\"*) ;; *) exit 0 ;; esac; command -v gitleaks >/dev/null 2>&1 || { echo 'gitleaks is not installed (brew install gitleaks); push blocked' >&2; exit 2; }; gitleaks git --no-banner --redact --log-level error . >&2 && gitleaks dir --no-banner --redact --log-level error . >&2 || { echo 'gitleaks found secrets; push blocked. Scrub them (rewrite history if committed) before pushing.' >&2; exit 2; }",
+            "timeout": 120,
+            "onFailure": "block",
+            "statusMessage": "Scanning for secrets before push"
+          }
+        ]
+      }
+    ]
+  }
+}

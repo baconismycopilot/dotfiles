@@ -53,6 +53,22 @@ file it would overwrite is backed up to `*.bak.<timestamp>`.
 
 zsh-specific; bash/fish users get the Python workflow above but not this.
 
+## Repo management
+
+`main` is protected by a GitHub ruleset: pull request required, linear history,
+no force pushes, no deletions, no bypass for anyone. Work on a branch and merge
+via PR.
+
+Secrets are blocked at three layers: GitHub secret scanning with push
+protection, a local `pre-push` hook running [gitleaks](https://github.com/gitleaks/gitleaks),
+and a Claude Code hook in `.claude/settings.json`. Enable the local hook once
+per clone:
+
+```sh
+brew install gitleaks
+git config core.hooksPath .githooks
+```
+
 ## New project
 
 ```sh

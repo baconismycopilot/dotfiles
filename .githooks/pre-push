@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Pre-push secrets scan. Blocks the push if gitleaks finds a leak in any commit
+# being pushed, or in the working tree. Enable once per clone with:
+#   git config core.hooksPath .githooks
+set -euo pipefail
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+    echo "pre-push: gitleaks is not installed (brew install gitleaks). Refusing to push." >&2
+    exit 1
+fi
+
+zero=0000000000000000000000000000000000000000
+status=0
+
+# stdin: <local ref> <local sha> <remote ref> <remote sha>, one line per ref.
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+    [ "$local_sha" = "$zero" ] && continue            # branch deletion: nothing to scan
+    if [ "$remote_sha" = "$zero" ]; then
+        range="$local_sha --not --remotes"            # new branch: commits not yet on any remote
+    else
+        range="$remote_sha..$local_sha"
+    fi
+    if ! gitleaks git --no-banner --redact --log-opts="$range" . ; then
+        status=1
+    fi
+done
+
+# Also catch untracked/unstaged secrets sitting next to what is being pushed.
+if ! gitleaks dir --no-banner --redact . ; then
+    status=1
+fi
+
+if [ "$status" -ne 0 ]; then
+    echo "pre-push: secrets detected; push refused. Remove them (and rewrite history if committed) before pushing." >&2
+fi
+exit "$status"
