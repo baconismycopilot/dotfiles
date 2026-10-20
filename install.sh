@@ -11,7 +11,7 @@
 #      symlink direnv/direnv.toml    -> $XDG_CONFIG_HOME/direnv/direnv.toml
 #   4. mise install                  (uv, direnv from mise/config.toml)
 #   4b. zsh (if present): oh-my-zsh + powerlevel10k + zsh-syntax-highlighting +
-#       eza/neovim, then copy zsh/ into $HOME (backing up existing files)
+#       neovim, then copy zsh/ into $HOME (backing up existing files)
 #   5. hook shell/mise.sh into ~/.zshrc / ~/.bashrc, shell/mise.fish into fish conf.d
 set -euo pipefail
 
@@ -135,8 +135,8 @@ if command -v zsh >/dev/null 2>&1; then
     clone_if_missing https://github.com/zsh-users/zsh-syntax-highlighting.git \
         "$ZSH_CUSTOM_DIR/plugins/zsh-syntax-highlighting"
 
-    say "installing eza, neovim"
-    pkg_install eza neovim || warn "some CLI tools failed to install; continuing"
+    say "installing neovim"
+    pkg_install neovim || warn "neovim failed to install; continuing"
 
     say "copying zsh dotfiles into \$HOME (existing files backed up to *.bak.<ts>)"
     copy_tree "$REPO/zsh" "$HOME"
