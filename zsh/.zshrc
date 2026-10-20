@@ -100,13 +100,6 @@ fi
 BSBE18000_CONFIG="$HOME/.local/user-secrets/bs-be18000.env"
 [ -r "$BSBE18000_CONFIG" ] && source "$BSBE18000_CONFIG"
 
-# Aliases
-alias history='history -f'
-alias wttr='curl -s https://wttr.in/Sunnyvale+CA'
-alias dupfinder="python ~/code/dup_finder/dup_finder.py"
-alias ll='eza -lagr --grid --header'
-alias c='clear'
-
 [ -r "$HOME/.config/shell/vims.env" ] && source "$HOME/.config/shell/vims.env"
 
 set -o vi
