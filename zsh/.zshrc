@@ -1,0 +1,120 @@
+# Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
+# Initialization code that may require console input (password prompts, [y/n]
+# confirmations, etc.) must go above this block; everything else may go below.
+if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
+
+# Keep $path (and $PATH) free of duplicate entries automatically.
+typeset -U path PATH
+
+# Homebrew (macOS: Apple Silicon or Intel). No-op on Linux (e.g. CachyOS uses pacman).
+for _brew in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+  if [[ -x $_brew ]]; then
+    eval "$("$_brew" shellenv)"
+    break
+  fi
+done
+unset _brew
+
+# Personal/tool bin directories, highest priority first.
+# Python is managed by uv; `python`/`python3` are uv-managed symlinks in
+# ~/.local/bin (see `uv python install --default`).
+path=(
+  "$HOME/bin"
+  "$HOME/.local/bin"
+  $path
+  /usr/local/bin
+)
+# Optional tool dirs — only add when present on this host.
+[[ -d "$HOME/.cargo/bin" ]] && path=("$HOME/.cargo/bin" $path)   # Rust/cargo
+[[ -d "$HOME/.rd/bin" ]]    && path=("$HOME/.rd/bin" $path)      # Rancher Desktop (macOS)
+
+# Path to your oh-my-zsh installation.
+export ZSH="$HOME/.oh-my-zsh"
+
+# Powerlevel10k, installed as an oh-my-zsh custom theme (see install.sh). This
+# works the same on macOS (brew) and Linux without hardcoding a package path.
+ZSH_THEME="powerlevel10k/powerlevel10k"
+
+# See https://github.com/ohmyzsh/ohmyzsh/wiki/Themes
+# Uncomment the following line to use case-sensitive completion.
+# CASE_SENSITIVE="true"
+
+# Uncomment the following line to use hyphen-insensitive completion.
+# Case-sensitive completion must be off. _ and - will be interchangeable.
+# HYPHEN_INSENSITIVE="true"
+
+# Uncomment one of the following lines to change the auto-update behavior
+# zstyle ':omz:update' mode disabled  # disable automatic updates
+# zstyle ':omz:update' mode auto      # update automatically without asking
+# zstyle ':omz:update' mode reminder  # just remind me to update when it's time
+
+# Uncomment the following line to change how often to auto-update (in days).
+# zstyle ':omz:update' frequency 13
+
+# Uncomment the following line if pasting URLs and other text is messed up.
+# DISABLE_MAGIC_FUNCTIONS="true"
+
+# Uncomment the following line to disable colors in ls.
+# DISABLE_LS_COLORS="true"
+
+# Uncomment the following line to disable auto-setting terminal title.
+# DISABLE_AUTO_TITLE="true"
+
+# Uncomment the following line to enable command auto-correction.
+# ENABLE_CORRECTION="true"
+
+# Which plugins would you like to load?
+# Standard plugins can be found in $ZSH/plugins/
+# Custom plugins may be added to $ZSH_CUSTOM/plugins/
+# Add wisely, as too many plugins slow down shell startup.
+# NOTE: direnv is hooked by shell/mise.sh (sourced at the end of this file by
+# install.sh's shell-hook step), so the oh-my-zsh direnv plugin is intentionally
+# omitted here to avoid hooking direnv twice.
+# zsh-syntax-highlighting is installed as a custom plugin by install.sh and must
+# stay last so it can wrap every widget defined by the other plugins.
+plugins=(zsh-syntax-highlighting)
+
+source "$ZSH/oh-my-zsh.sh"
+
+# Onedark colors for zsh-syntax-highlighting. Sourced AFTER oh-my-zsh.sh so the
+# highlighting engine (loaded via the plugin above) is already active.
+[ -r "$HOME/.config/shell/onedark-zsh-syntax-highlighter.zsh" ] && \
+  source "$HOME/.config/shell/onedark-zsh-syntax-highlighter.zsh"
+
+# User configuration
+
+# Preferred editor for local and remote sessions.
+if [[ -n $SSH_CONNECTION ]]; then
+    export EDITOR='vim'
+elif command -v nvim >/dev/null 2>&1; then
+    export EDITOR='nvim'
+else
+    export EDITOR='vim'
+fi
+
+# To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+
+BSBE18000_CONFIG="$HOME/.local/user-secrets/bs-be18000.env"
+[ -r "$BSBE18000_CONFIG" ] && source "$BSBE18000_CONFIG"
+
+# Aliases
+alias history='history -f'
+alias wttr='curl -s https://wttr.in/Sunnyvale+CA'
+alias dupfinder="python ~/code/dup_finder/dup_finder.py"
+alias ll='eza -lagr --grid --header'
+alias c='clear'
+
+[ -r "$HOME/.config/shell/vims.env" ] && source "$HOME/.config/shell/vims.env"
+
+set -o vi
+
+# LM Studio CLI (lms) — only if installed (macOS).
+[[ -d "$HOME/.lmstudio/bin" ]] && export PATH="$PATH:$HOME/.lmstudio/bin"
+
+# Per-host overrides — NOT tracked in the dotfiles repo. Put machine-specific
+# PATH entries, aliases (e.g. ssh shortcuts), and tweaks here. Example:
+#   alias superbacon='ssh user@192.168.x.x'
+[ -r "$HOME/.zshrc.local" ] && source "$HOME/.zshrc.local"

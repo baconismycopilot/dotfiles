@@ -29,10 +29,29 @@ exec $SHELL
 | `direnv/lib/*.sh` | symlinked into `$XDG_CONFIG_HOME/direnv/lib/`; direnv auto-loads them |
 | `direnv/direnv.toml` | symlinked; raises the slow-`.envrc` warning to 1m for `uv sync` |
 | `mise install` | installs the global tools above |
+| `zsh/` | if `zsh` is present: installs oh-my-zsh, powerlevel10k, zsh-syntax-highlighting, eza, neovim, then **copies** `zsh/` into `$HOME` (existing files backed up). Not symlinked, so per-host edits stay local |
 | `shell/mise.sh` | sourced from `~/.zshrc` / `~/.bashrc`; `shell/mise.fish` linked into fish `conf.d/` |
 
 Supported: macOS, Linux, WSL with bash, zsh or fish. Native Windows has no
 direnv shell hook; use WSL.
+
+## Shell (zsh)
+
+This repo also carries my interactive zsh setup (oh-my-zsh + Powerlevel10k).
+`install.sh` installs the prerequisites and **copies** the `zsh/` files into
+`$HOME` — copied, not symlinked, so per-host tweaks stay out of the repo. Any
+file it would overwrite is backed up to `*.bak.<timestamp>`.
+
+- **Per-host overrides:** `~/.zshrc` sources `~/.zshrc.local` (git-ignored) if
+  present. Put machine-specific PATH entries and aliases there, e.g.
+  `alias superbacon='ssh user@192.168.x.x'`.
+- **Secrets:** nothing secret is tracked. `~/.local/user-secrets/bs-be18000.env`
+  is scaffolded from `examples/bs-be18000.env.example`; fill in real values.
+- **direnv** is hooked once, by `shell/mise.sh` (the oh-my-zsh direnv plugin is
+  intentionally omitted), so the mise + direnv + uv workflow above works
+  unchanged under zsh.
+
+zsh-specific; bash/fish users get the Python workflow above but not this.
 
 ## New project
 
@@ -67,6 +86,10 @@ mise/config.toml              mise global config (uv, direnv)
 shell/mise.sh, mise.fish      PATH (mise bin + shims) and direnv hook
 templates/envrc, mise.toml    copied by bin/uv-init
 bin/uv-init                   scaffold a project
+zsh/.zshrc .zprofile .zshenv .p10k.zsh   zsh + oh-my-zsh + powerlevel10k (copied to $HOME)
+zsh/.config/shell/vims.env               nvim NVIM_APPNAME aliases
+zsh/.config/shell/onedark-*.zsh          onedark colors for zsh-syntax-highlighting
+examples/bs-be18000.env.example          template for a machine-local secret
 install.sh                    bootstrap
 ```
 

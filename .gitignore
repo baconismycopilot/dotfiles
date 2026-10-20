@@ -1,4 +1,9 @@
 *.bak
+*.bak.*
 .venv/
 __pycache__/
 .DS_Store
+.claude/
+
+# Never commit real secrets — only examples/*.example are tracked.
+**/user-secrets/

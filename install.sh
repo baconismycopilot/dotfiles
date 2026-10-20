@@ -10,6 +10,8 @@
 #   3. symlink direnv/lib/*.sh       -> $XDG_CONFIG_HOME/direnv/lib/   (use mise, layout uv|poetry|pip)
 #      symlink direnv/direnv.toml    -> $XDG_CONFIG_HOME/direnv/direnv.toml
 #   4. mise install                  (uv, direnv from mise/config.toml)
+#   4b. zsh (if present): oh-my-zsh + powerlevel10k + zsh-syntax-highlighting +
+#       eza/neovim, then copy zsh/ into $HOME (backing up existing files)
 #   5. hook shell/mise.sh into ~/.zshrc / ~/.bashrc, shell/mise.fish into fish conf.d
 set -euo pipefail
 
@@ -45,6 +47,50 @@ ensure_line() {
     fi
 }
 
+OS="$(uname -s)"
+ZSH_CUSTOM_DIR="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
+
+# pkg_install PKGS... — install packages with the platform package manager.
+pkg_install() {
+    case "$OS" in
+        Darwin)
+            command -v brew >/dev/null 2>&1 || { warn "Homebrew not found; skipping: $*"; return 0; }
+            brew install "$@" ;;
+        Linux)
+            if command -v pacman >/dev/null 2>&1; then
+                sudo pacman -S --needed --noconfirm "$@"
+            elif command -v yay >/dev/null 2>&1; then
+                yay -S --needed --noconfirm "$@"
+            else
+                warn "no pacman/yay found; skipping: $*"
+            fi ;;
+        *) warn "unsupported OS $OS; skipping: $*" ;;
+    esac
+}
+
+# clone_if_missing REPO DST — shallow clone REPO to DST unless it already exists.
+clone_if_missing() {
+    [ -d "$2" ] && return
+    say "cloning $(basename "$2")"
+    git clone --depth=1 "$1" "$2"
+}
+
+# copy_tree SRC DST — copy every file under SRC into DST, backing up changed files.
+copy_tree() {
+    local src="$1" dst="$2" ts rel target
+    ts="$(date +%Y%m%d%H%M%S)"
+    while IFS= read -r -d '' f; do
+        rel="${f#"$src"/}"
+        target="$dst/$rel"
+        mkdir -p "$(dirname "$target")"
+        if [ -e "$target" ] && ! cmp -s "$f" "$target"; then
+            cp -p "$target" "$target.bak.$ts"
+            say "backed up $rel -> $rel.bak.$ts"
+        fi
+        cp "$f" "$target"
+    done < <(find "$src" -type f -print0)
+}
+
 # 1. mise
 if ! command -v mise >/dev/null 2>&1 && [ ! -x "$MISE_BIN" ]; then
     case "$(uname -s)" in
@@ -72,6 +118,38 @@ link "$REPO/direnv/direnv.toml" "$XDG_CONFIG_HOME/direnv/direnv.toml"
 say "installing global tools"
 mise install --yes
 mise reshim >/dev/null 2>&1 || true
+
+# 4b. zsh config (oh-my-zsh + powerlevel10k + zsh-syntax-highlighting + CLI tools)
+if command -v zsh >/dev/null 2>&1; then
+    say "setting up zsh config"
+
+    if [ ! -d "$HOME/.oh-my-zsh" ]; then
+        say "installing oh-my-zsh"
+        # KEEP_ZSHRC=yes so the installer does not clobber the .zshrc we copy below.
+        RUNZSH=no CHSH=no KEEP_ZSHRC=yes \
+            sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+    fi
+
+    clone_if_missing https://github.com/romkatv/powerlevel10k.git \
+        "$ZSH_CUSTOM_DIR/themes/powerlevel10k"
+    clone_if_missing https://github.com/zsh-users/zsh-syntax-highlighting.git \
+        "$ZSH_CUSTOM_DIR/plugins/zsh-syntax-highlighting"
+
+    say "installing eza, neovim"
+    pkg_install eza neovim || warn "some CLI tools failed to install; continuing"
+
+    say "copying zsh dotfiles into \$HOME (existing files backed up to *.bak.<ts>)"
+    copy_tree "$REPO/zsh" "$HOME"
+
+    # Machine-local secret scaffold — never tracked by git.
+    mkdir -p "$HOME/.local/user-secrets"
+    if [ ! -e "$HOME/.local/user-secrets/bs-be18000.env" ]; then
+        cp "$REPO/examples/bs-be18000.env.example" "$HOME/.local/user-secrets/bs-be18000.env"
+        say "created ~/.local/user-secrets/bs-be18000.env from example (fill it in)"
+    fi
+else
+    warn "zsh not found; skipping zsh config"
+fi
 
 # 5. shell hooks
 [ -f "$HOME/.zshrc" ]  || [ "${SHELL##*/}" = "zsh" ]  && ensure_line "$HOME/.zshrc"  "[ -r \"$REPO/shell/mise.sh\" ] && source \"$REPO/shell/mise.sh\""
