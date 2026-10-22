@@ -13,7 +13,9 @@
 #   4b. zsh (if present): oh-my-zsh + powerlevel10k + zsh-syntax-highlighting
 #       (skipped on CachyOS, which ships them as packages) + neovim, then copy
 #       zsh/ into $HOME (backing up existing files)
-#   5. hook shell/mise.sh into ~/.zshrc / ~/.bashrc, shell/mise.fish into fish conf.d
+#   5. link shell/mise.sh -> $XDG_CONFIG_HOME/shell/mise.sh (sourced by zsh/.zshrc),
+#      hook it into ~/.bashrc, link shell/mise.fish into fish conf.d
+#   6. gitleaks (if missing) + core.hooksPath=.githooks for the pre-push secrets scan
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -146,8 +148,10 @@ if command -v zsh >/dev/null 2>&1; then
             "$ZSH_CUSTOM_DIR/plugins/zsh-syntax-highlighting"
     fi
 
-    say "installing neovim"
-    pkg_install neovim || warn "neovim failed to install; continuing"
+    if ! command -v nvim >/dev/null 2>&1; then
+        say "installing neovim"
+        pkg_install neovim || warn "neovim failed to install; continuing"
+    fi
 
     say "copying zsh dotfiles into \$HOME (existing files backed up to *.bak.<ts>)"
     copy_tree "$REPO/zsh" "$HOME"
@@ -162,11 +166,19 @@ else
     warn "zsh not found; skipping zsh config"
 fi
 
-# 5. shell hooks
-[ -f "$HOME/.zshrc" ]  || [ "${SHELL##*/}" = "zsh" ]  && ensure_line "$HOME/.zshrc"  "[ -r \"$REPO/shell/mise.sh\" ] && source \"$REPO/shell/mise.sh\""
+# 5. shell hooks. zsh/.zshrc sources the linked mise.sh itself, so ~/.zshrc is
+# not appended to (that would make every re-run back up and re-copy it).
+link "$REPO/shell/mise.sh" "$XDG_CONFIG_HOME/shell/mise.sh"
 [ -f "$HOME/.bashrc" ] || [ "${SHELL##*/}" = "bash" ] && ensure_line "$HOME/.bashrc" "[ -r \"$REPO/shell/mise.sh\" ] && source \"$REPO/shell/mise.sh\""
 if [ -d "$XDG_CONFIG_HOME/fish" ] || command -v fish >/dev/null 2>&1; then
     link "$REPO/shell/mise.fish" "$XDG_CONFIG_HOME/fish/conf.d/mise.fish"
 fi
+
+# 6. secrets scanning for this clone: gitleaks + the pre-push hook
+if ! command -v gitleaks >/dev/null 2>&1; then
+    say "installing gitleaks"
+    pkg_install gitleaks || warn "gitleaks failed to install; pushes from this clone will be blocked"
+fi
+git -C "$REPO" config core.hooksPath .githooks
 
 say "done. Open a new shell, then: $REPO/bin/uv-init ~/code/myproject"

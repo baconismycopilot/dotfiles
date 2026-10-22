@@ -4,13 +4,6 @@
 # prompt and sources ~/.p10k.zsh, so both are skipped below on CachyOS.
 _cachyos_zsh=/usr/share/cachyos-zsh-config/cachyos-config.zsh
 
-# Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
-# Initialization code that may require console input (password prompts, [y/n]
-# confirmations, etc.) must go above this block; everything else may go below.
-if [[ ! -r $_cachyos_zsh && -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
-  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
-fi
-
 # Keep $path (and $PATH) free of duplicate entries automatically.
 typeset -U path PATH
 
@@ -35,12 +28,32 @@ path=(
 # Optional tool dirs — only add when present on this host.
 [[ -d "$HOME/.cargo/bin" ]] && path=("$HOME/.cargo/bin" $path)   # Rust/cargo
 [[ -d "$HOME/.rd/bin" ]]    && path=("$HOME/.rd/bin" $path)      # Rancher Desktop (macOS)
+[[ -d "$HOME/go/bin" ]]     && path+=("$HOME/go/bin")             # Go (go install)
+
+# mise + direnv: puts mise and its shims on PATH and registers the direnv hook
+# (linked here by install.sh). Then load the current directory's .envrc now,
+# before the p10k instant prompt, so direnv's "loading" output can't trip
+# p10k's console-output warning. Both run after the PATH setup above so a
+# project venv stays ahead of ~/.local/bin.
+[ -r "$HOME/.config/shell/mise.sh" ] && source "$HOME/.config/shell/mise.sh"
+(( ${+commands[direnv]} )) && emulate zsh -c "$(direnv export zsh)"
+
+# Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
+# Initialization code that may require console input (password prompts, [y/n]
+# confirmations, etc.) must go above this block; everything else may go below.
+if [[ ! -r $_cachyos_zsh && -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
+
 
 if [[ -r $_cachyos_zsh ]]; then
   # CachyOS: oh-my-zsh (plugins git fzf extract), powerlevel10k,
   # zsh-syntax-highlighting, zsh-autosuggestions, zsh-history-substring-search
   # and the pkgfile command-not-found handler, all from /usr/share.
   source "$_cachyos_zsh"
+  # CachyOS defines this in double quotes, so $(pacman -Qtdq) runs once at
+  # shell startup instead of when the alias is used.
+  alias cleanup='sudo pacman -Rsn $(pacman -Qtdq)'
 else
   # Path to your oh-my-zsh installation.
   export ZSH="$HOME/.oh-my-zsh"
@@ -81,9 +94,9 @@ else
   # Standard plugins can be found in $ZSH/plugins/
   # Custom plugins may be added to $ZSH_CUSTOM/plugins/
   # Add wisely, as too many plugins slow down shell startup.
-  # NOTE: direnv is hooked by shell/mise.sh (sourced at the end of this file by
-  # install.sh's shell-hook step), so the oh-my-zsh direnv plugin is intentionally
-  # omitted here to avoid hooking direnv twice.
+  # NOTE: direnv is hooked by shell/mise.sh (sourced near the top of this file),
+  # so the oh-my-zsh direnv plugin is intentionally omitted here to avoid hooking
+  # direnv twice.
   # zsh-syntax-highlighting is installed as a custom plugin by install.sh and must
   # stay last so it can wrap every widget defined by the other plugins.
   plugins=(zsh-syntax-highlighting)
@@ -111,8 +124,14 @@ fi
 [[ -r $_cachyos_zsh || ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 unset _cachyos_zsh
 
-BSBE18000_CONFIG="$HOME/.local/user-secrets/bs-be18000.env"
-[ -r "$BSBE18000_CONFIG" ] && source "$BSBE18000_CONFIG"
+# Load bs-be18000 credentials only for that command, in a subshell, so they are
+# not exported to every process started from this shell.
+bs-be18000() {
+  (
+    [ -r "$HOME/.local/user-secrets/bs-be18000.env" ] && source "$HOME/.local/user-secrets/bs-be18000.env"
+    command bs-be18000 "$@"
+  )
+}
 
 [ -r "$HOME/.config/shell/vims.env" ] && source "$HOME/.config/shell/vims.env"
 
