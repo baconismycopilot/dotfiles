@@ -5,13 +5,14 @@
 # no PowerShell hook; use WSL (or Git Bash, which this script also handles).
 #
 # What it does (all idempotent, existing files are backed up to *.bak):
-#   1. install mise if missing (https://mise.run)
+#   1. install mise if missing (pacman on Arch, else https://mise.run)
 #   2. symlink mise/config.toml      -> $XDG_CONFIG_HOME/mise/config.toml
 #   3. symlink direnv/lib/*.sh       -> $XDG_CONFIG_HOME/direnv/lib/   (use mise, layout uv|poetry|pip)
 #      symlink direnv/direnv.toml    -> $XDG_CONFIG_HOME/direnv/direnv.toml
 #   4. mise install                  (uv, direnv from mise/config.toml)
-#   4b. zsh (if present): oh-my-zsh + powerlevel10k + zsh-syntax-highlighting +
-#       neovim, then copy zsh/ into $HOME (backing up existing files)
+#   4b. zsh (if present): oh-my-zsh + powerlevel10k + zsh-syntax-highlighting
+#       (skipped on CachyOS, which ships them as packages) + neovim, then copy
+#       zsh/ into $HOME (backing up existing files)
 #   5. hook shell/mise.sh into ~/.zshrc / ~/.bashrc, shell/mise.fish into fish conf.d
 set -euo pipefail
 
@@ -49,6 +50,8 @@ ensure_line() {
 
 OS="$(uname -s)"
 ZSH_CUSTOM_DIR="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
+# CachyOS's own zsh config; zsh/.zshrc sources it instead of ~/.oh-my-zsh when present.
+CACHYOS_ZSH=/usr/share/cachyos-zsh-config/cachyos-config.zsh
 
 # pkg_install PKGS... — install packages with the platform package manager.
 pkg_install() {
@@ -92,6 +95,10 @@ copy_tree() {
 }
 
 # 1. mise
+if ! command -v mise >/dev/null 2>&1 && [ ! -x "$MISE_BIN" ] && command -v pacman >/dev/null 2>&1; then
+    say "installing mise"
+    pkg_install mise
+fi
 if ! command -v mise >/dev/null 2>&1 && [ ! -x "$MISE_BIN" ]; then
     case "$(uname -s)" in
         Darwin|Linux|MINGW*|MSYS*|CYGWIN*)
@@ -123,17 +130,21 @@ mise reshim >/dev/null 2>&1 || true
 if command -v zsh >/dev/null 2>&1; then
     say "setting up zsh config"
 
-    if [ ! -d "$HOME/.oh-my-zsh" ]; then
-        say "installing oh-my-zsh"
-        # KEEP_ZSHRC=yes so the installer does not clobber the .zshrc we copy below.
-        RUNZSH=no CHSH=no KEEP_ZSHRC=yes \
-            sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
-    fi
+    if [ -r "$CACHYOS_ZSH" ]; then
+        say "CachyOS zsh config found; using its packaged oh-my-zsh, powerlevel10k and plugins"
+    else
+        if [ ! -d "$HOME/.oh-my-zsh" ]; then
+            say "installing oh-my-zsh"
+            # KEEP_ZSHRC=yes so the installer does not clobber the .zshrc we copy below.
+            RUNZSH=no CHSH=no KEEP_ZSHRC=yes \
+                sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+        fi
 
-    clone_if_missing https://github.com/romkatv/powerlevel10k.git \
-        "$ZSH_CUSTOM_DIR/themes/powerlevel10k"
-    clone_if_missing https://github.com/zsh-users/zsh-syntax-highlighting.git \
-        "$ZSH_CUSTOM_DIR/plugins/zsh-syntax-highlighting"
+        clone_if_missing https://github.com/romkatv/powerlevel10k.git \
+            "$ZSH_CUSTOM_DIR/themes/powerlevel10k"
+        clone_if_missing https://github.com/zsh-users/zsh-syntax-highlighting.git \
+            "$ZSH_CUSTOM_DIR/plugins/zsh-syntax-highlighting"
+    fi
 
     say "installing neovim"
     pkg_install neovim || warn "neovim failed to install; continuing"

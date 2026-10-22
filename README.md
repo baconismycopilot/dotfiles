@@ -24,12 +24,12 @@ exec $SHELL
 
 | step | what |
 | --- | --- |
-| mise | installs via <https://mise.run> if missing (macOS, Linux, WSL, Git Bash) |
+| mise | installs if missing: pacman on Arch, otherwise <https://mise.run> (macOS, Linux, WSL, Git Bash) |
 | `mise/config.toml` | symlinked to `$XDG_CONFIG_HOME/mise/config.toml`; pins global `uv` and `direnv` |
 | `direnv/lib/*.sh` | symlinked into `$XDG_CONFIG_HOME/direnv/lib/`; direnv auto-loads them |
 | `direnv/direnv.toml` | symlinked; raises the slow-`.envrc` warning to 1m for `uv sync` |
 | `mise install` | installs the global tools above |
-| `zsh/` | if `zsh` is present: installs oh-my-zsh, powerlevel10k, zsh-syntax-highlighting, neovim, then **copies** `zsh/` into `$HOME` (existing files backed up). Not symlinked, so per-host edits stay local |
+| `zsh/` | if `zsh` is present: installs oh-my-zsh, powerlevel10k, zsh-syntax-highlighting (skipped on CachyOS), neovim, then **copies** `zsh/` into `$HOME` (existing files backed up). Not symlinked, so per-host edits stay local |
 | `shell/mise.sh` | sourced from `~/.zshrc` / `~/.bashrc`; `shell/mise.fish` linked into fish `conf.d/` |
 
 Supported: macOS, Linux, WSL with bash, zsh or fish. Native Windows has no
@@ -42,6 +42,11 @@ This repo also carries my interactive zsh setup (oh-my-zsh + Powerlevel10k).
 `$HOME` — copied, not symlinked, so per-host tweaks stay out of the repo. Any
 file it would overwrite is backed up to `*.bak.<timestamp>`.
 
+- **CachyOS:** if `/usr/share/cachyos-zsh-config/cachyos-config.zsh` exists,
+  `~/.zshrc` sources it instead of `~/.oh-my-zsh`. That gives the pacman-packaged
+  oh-my-zsh, powerlevel10k, syntax highlighting, autosuggestions, history
+  substring search and pkgfile's command-not-found handler, and `install.sh`
+  skips the oh-my-zsh install and git clones.
 - **Per-host overrides:** `~/.zshrc` sources `~/.zshrc.local` (git-ignored) if
   present. Put machine-specific PATH entries and aliases there, e.g.
   `alias superbacon='ssh user@192.168.x.x'`.
