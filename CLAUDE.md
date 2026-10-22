@@ -40,9 +40,11 @@ All three must stay in place. Do not weaken or remove any of them.
 Setup once per clone:
 
 ```sh
-brew install gitleaks
+brew install gitleaks            # macOS; Arch/CachyOS: sudo pacman -S gitleaks
 git config core.hooksPath .githooks
 ```
+
+`install.sh` does both (gitleaks only if missing).
 
 If the Claude Code hook blocks a push, the reason is in its stderr. Fix the
 underlying leak; never bypass the hook by rewording the command.

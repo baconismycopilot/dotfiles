@@ -24,13 +24,14 @@ exec $SHELL
 
 | step | what |
 | --- | --- |
-| mise | installs via <https://mise.run> if missing (macOS, Linux, WSL, Git Bash) |
+| mise | installs if missing: pacman on Arch, otherwise <https://mise.run> (macOS, Linux, WSL, Git Bash) |
 | `mise/config.toml` | symlinked to `$XDG_CONFIG_HOME/mise/config.toml`; pins global `uv` and `direnv` |
 | `direnv/lib/*.sh` | symlinked into `$XDG_CONFIG_HOME/direnv/lib/`; direnv auto-loads them |
 | `direnv/direnv.toml` | symlinked; raises the slow-`.envrc` warning to 1m for `uv sync` |
 | `mise install` | installs the global tools above |
-| `zsh/` | if `zsh` is present: installs oh-my-zsh, powerlevel10k, zsh-syntax-highlighting, neovim, then **copies** `zsh/` into `$HOME` (existing files backed up). Not symlinked, so per-host edits stay local |
-| `shell/mise.sh` | sourced from `~/.zshrc` / `~/.bashrc`; `shell/mise.fish` linked into fish `conf.d/` |
+| `zsh/` | if `zsh` is present: installs oh-my-zsh, powerlevel10k, zsh-syntax-highlighting (skipped on CachyOS), neovim, then **copies** `zsh/` into `$HOME` (existing files backed up). Not symlinked, so per-host edits stay local |
+| `shell/mise.sh` | linked to `$XDG_CONFIG_HOME/shell/mise.sh` and sourced by the repo `~/.zshrc`; hooked into `~/.bashrc`; `shell/mise.fish` linked into fish `conf.d/` |
+| gitleaks | installed if missing; `core.hooksPath` set to `.githooks` so the pre-push secrets scan runs |
 
 Supported: macOS, Linux, WSL with bash, zsh or fish. Native Windows has no
 direnv shell hook; use WSL.
@@ -42,14 +43,22 @@ This repo also carries my interactive zsh setup (oh-my-zsh + Powerlevel10k).
 `$HOME` — copied, not symlinked, so per-host tweaks stay out of the repo. Any
 file it would overwrite is backed up to `*.bak.<timestamp>`.
 
+- **CachyOS:** if `/usr/share/cachyos-zsh-config/cachyos-config.zsh` exists,
+  `~/.zshrc` sources it instead of `~/.oh-my-zsh`. That gives the pacman-packaged
+  oh-my-zsh, powerlevel10k, syntax highlighting, autosuggestions, history
+  substring search and pkgfile's command-not-found handler, and `install.sh`
+  skips the oh-my-zsh install and git clones.
 - **Per-host overrides:** `~/.zshrc` sources `~/.zshrc.local` (git-ignored) if
   present. Put machine-specific PATH entries and aliases there, e.g.
   `alias superbacon='ssh user@192.168.x.x'`.
 - **Secrets:** nothing secret is tracked. `~/.local/user-secrets/bs-be18000.env`
-  is scaffolded from `examples/bs-be18000.env.example`; fill in real values.
+  is scaffolded from `examples/bs-be18000.env.example`; fill in real values. It
+  is loaded only when running `bs-be18000` (a wrapper function in `~/.zshrc`),
+  not exported to every process.
 - **direnv** is hooked once, by `shell/mise.sh` (the oh-my-zsh direnv plugin is
   intentionally omitted), so the mise + direnv + uv workflow above works
-  unchanged under zsh.
+  unchanged under zsh. `~/.zshrc` runs `direnv export` before the p10k instant
+  prompt so direnv output never triggers p10k's console-output warning.
 
 zsh-specific; bash/fish users get the Python workflow above but not this.
 
@@ -65,9 +74,11 @@ and a Claude Code hook in `.claude/settings.json`. Enable the local hook once
 per clone:
 
 ```sh
-brew install gitleaks
+brew install gitleaks            # macOS; Arch/CachyOS: sudo pacman -S gitleaks
 git config core.hooksPath .githooks
 ```
+
+`install.sh` does both (gitleaks only if missing).
 
 ## New project
 

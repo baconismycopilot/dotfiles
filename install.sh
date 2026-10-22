@@ -5,14 +5,17 @@
 # no PowerShell hook; use WSL (or Git Bash, which this script also handles).
 #
 # What it does (all idempotent, existing files are backed up to *.bak):
-#   1. install mise if missing (https://mise.run)
+#   1. install mise if missing (pacman on Arch, else https://mise.run)
 #   2. symlink mise/config.toml      -> $XDG_CONFIG_HOME/mise/config.toml
 #   3. symlink direnv/lib/*.sh       -> $XDG_CONFIG_HOME/direnv/lib/   (use mise, layout uv|poetry|pip)
 #      symlink direnv/direnv.toml    -> $XDG_CONFIG_HOME/direnv/direnv.toml
 #   4. mise install                  (uv, direnv from mise/config.toml)
-#   4b. zsh (if present): oh-my-zsh + powerlevel10k + zsh-syntax-highlighting +
-#       neovim, then copy zsh/ into $HOME (backing up existing files)
-#   5. hook shell/mise.sh into ~/.zshrc / ~/.bashrc, shell/mise.fish into fish conf.d
+#   4b. zsh (if present): oh-my-zsh + powerlevel10k + zsh-syntax-highlighting
+#       (skipped on CachyOS, which ships them as packages) + neovim, then copy
+#       zsh/ into $HOME (backing up existing files)
+#   5. link shell/mise.sh -> $XDG_CONFIG_HOME/shell/mise.sh (sourced by zsh/.zshrc),
+#      hook it into ~/.bashrc, link shell/mise.fish into fish conf.d
+#   6. gitleaks (if missing) + core.hooksPath=.githooks for the pre-push secrets scan
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,6 +52,8 @@ ensure_line() {
 
 OS="$(uname -s)"
 ZSH_CUSTOM_DIR="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
+# CachyOS's own zsh config; zsh/.zshrc sources it instead of ~/.oh-my-zsh when present.
+CACHYOS_ZSH=/usr/share/cachyos-zsh-config/cachyos-config.zsh
 
 # pkg_install PKGS... — install packages with the platform package manager.
 pkg_install() {
@@ -92,6 +97,10 @@ copy_tree() {
 }
 
 # 1. mise
+if ! command -v mise >/dev/null 2>&1 && [ ! -x "$MISE_BIN" ] && command -v pacman >/dev/null 2>&1; then
+    say "installing mise"
+    pkg_install mise
+fi
 if ! command -v mise >/dev/null 2>&1 && [ ! -x "$MISE_BIN" ]; then
     case "$(uname -s)" in
         Darwin|Linux|MINGW*|MSYS*|CYGWIN*)
@@ -123,20 +132,26 @@ mise reshim >/dev/null 2>&1 || true
 if command -v zsh >/dev/null 2>&1; then
     say "setting up zsh config"
 
-    if [ ! -d "$HOME/.oh-my-zsh" ]; then
-        say "installing oh-my-zsh"
-        # KEEP_ZSHRC=yes so the installer does not clobber the .zshrc we copy below.
-        RUNZSH=no CHSH=no KEEP_ZSHRC=yes \
-            sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+    if [ -r "$CACHYOS_ZSH" ]; then
+        say "CachyOS zsh config found; using its packaged oh-my-zsh, powerlevel10k and plugins"
+    else
+        if [ ! -d "$HOME/.oh-my-zsh" ]; then
+            say "installing oh-my-zsh"
+            # KEEP_ZSHRC=yes so the installer does not clobber the .zshrc we copy below.
+            RUNZSH=no CHSH=no KEEP_ZSHRC=yes \
+                sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+        fi
+
+        clone_if_missing https://github.com/romkatv/powerlevel10k.git \
+            "$ZSH_CUSTOM_DIR/themes/powerlevel10k"
+        clone_if_missing https://github.com/zsh-users/zsh-syntax-highlighting.git \
+            "$ZSH_CUSTOM_DIR/plugins/zsh-syntax-highlighting"
     fi
 
-    clone_if_missing https://github.com/romkatv/powerlevel10k.git \
-        "$ZSH_CUSTOM_DIR/themes/powerlevel10k"
-    clone_if_missing https://github.com/zsh-users/zsh-syntax-highlighting.git \
-        "$ZSH_CUSTOM_DIR/plugins/zsh-syntax-highlighting"
-
-    say "installing neovim"
-    pkg_install neovim || warn "neovim failed to install; continuing"
+    if ! command -v nvim >/dev/null 2>&1; then
+        say "installing neovim"
+        pkg_install neovim || warn "neovim failed to install; continuing"
+    fi
 
     say "copying zsh dotfiles into \$HOME (existing files backed up to *.bak.<ts>)"
     copy_tree "$REPO/zsh" "$HOME"
@@ -151,11 +166,19 @@ else
     warn "zsh not found; skipping zsh config"
 fi
 
-# 5. shell hooks
-[ -f "$HOME/.zshrc" ]  || [ "${SHELL##*/}" = "zsh" ]  && ensure_line "$HOME/.zshrc"  "[ -r \"$REPO/shell/mise.sh\" ] && source \"$REPO/shell/mise.sh\""
+# 5. shell hooks. zsh/.zshrc sources the linked mise.sh itself, so ~/.zshrc is
+# not appended to (that would make every re-run back up and re-copy it).
+link "$REPO/shell/mise.sh" "$XDG_CONFIG_HOME/shell/mise.sh"
 [ -f "$HOME/.bashrc" ] || [ "${SHELL##*/}" = "bash" ] && ensure_line "$HOME/.bashrc" "[ -r \"$REPO/shell/mise.sh\" ] && source \"$REPO/shell/mise.sh\""
 if [ -d "$XDG_CONFIG_HOME/fish" ] || command -v fish >/dev/null 2>&1; then
     link "$REPO/shell/mise.fish" "$XDG_CONFIG_HOME/fish/conf.d/mise.fish"
 fi
+
+# 6. secrets scanning for this clone: gitleaks + the pre-push hook
+if ! command -v gitleaks >/dev/null 2>&1; then
+    say "installing gitleaks"
+    pkg_install gitleaks || warn "gitleaks failed to install; pushes from this clone will be blocked"
+fi
+git -C "$REPO" config core.hooksPath .githooks
 
 say "done. Open a new shell, then: $REPO/bin/uv-init ~/code/myproject"
