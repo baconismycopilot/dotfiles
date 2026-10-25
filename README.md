@@ -92,6 +92,24 @@ leader, `Ctrl+A` then a key, so it never collides with shell or editor keys.
 Font stack is JetBrains Mono with Nerd Font symbols as fallback. WezTerm
 bundles both, so nothing needs installing for the Powerlevel10k glyphs.
 
+The table above is a summary. `bin/wezterm-keys` reads the real state from
+WezTerm itself (`wezterm show-keys`) and from the desktop, so it stays correct
+as the config changes:
+
+```sh
+bin/wezterm-keys          # every effective binding, grouped by modifier;
+                          # [cfg] = set in wezterm.lua, [SYS] = the desktop grabs it first
+bin/wezterm-keys free     # grid of unbound chords per modifier set
+bin/wezterm-keys system   # KDE Plasma (from kglobalshortcutsrc) or macOS global shortcuts,
+                          # plus the CTRL chords the shell owns
+bin/wezterm-keys actions  # KeyAssignment names you can map, with doc links
+bin/wezterm-keys tables   # copy_mode and search_mode key tables
+```
+
+Inside WezTerm, `Ctrl+Shift+P` opens the command palette, which also lists
+every action with its binding. Needs `python3` (stdlib only) and `wezterm` on
+PATH; on macOS the binary inside WezTerm.app is found automatically.
+
 ## Repo management
 
 `main` is protected by a GitHub ruleset: pull request required, linear history,
@@ -143,6 +161,7 @@ mise/config.toml              mise global config (uv, direnv)
 shell/mise.sh, mise.fish      PATH (mise bin + shims) and direnv hook
 templates/envrc, mise.toml    copied by bin/uv-init
 bin/uv-init                   scaffold a project
+bin/wezterm-keys              list WezTerm bindings, free chords, OS-reserved shortcuts
 zsh/.zshrc .zprofile .zshenv .p10k.zsh   zsh + oh-my-zsh + powerlevel10k (symlinked into $HOME)
 zsh/.config/shell/vims.env               nvim NVIM_APPNAME aliases
 zsh/.config/shell/onedark-*.zsh          onedark colors for zsh-syntax-highlighting

@@ -1,0 +1,426 @@
+#!/usr/bin/env python3
+"""wezterm-keys — show WezTerm key bindings, what is free, and what the OS owns.
+
+Usage:
+  wezterm-keys [list]      effective bindings in the default key table, grouped
+                           by modifier; marks [cfg] (set in wezterm.lua) and
+                           [SYS] (shadowed by a desktop/OS global shortcut)
+  wezterm-keys free        grid of unbound key combos per modifier set
+  wezterm-keys system      desktop/OS global shortcuts that reach WezTerm first
+  wezterm-keys actions     KeyAssignment names you can map, with doc links
+  wezterm-keys tables      copy_mode / search_mode key tables
+  wezterm-keys --help
+
+Data sources (nothing is hard-coded about this config):
+  * `wezterm show-keys --lua`             effective bindings (defaults + wezterm.lua)
+  * `wezterm --config-file empty show-keys` built-in defaults, to tell them apart
+  * KDE Plasma: ~/.config/kglobalshortcutsrc (active column, per host)
+  * macOS: Apple's documented system-wide defaults (static list; check
+    System Settings > Keyboard > Keyboard Shortcuts for changes)
+  * shell: common readline/zle CTRL chords, so they are not reported as free
+
+Needs python3 and wezterm on PATH (macOS: WezTerm.app is found automatically).
+"""
+
+import configparser
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+MOD_ORDER = ["LEADER", "SUPER", "CTRL", "ALT", "SHIFT"]
+KDE_MODS = {"Meta": "SUPER", "Ctrl": "CTRL", "Alt": "ALT", "Shift": "SHIFT"}
+KDE_KEYS = {
+    "Left": "LeftArrow", "Right": "RightArrow", "Up": "UpArrow", "Down": "DownArrow",
+    "PgUp": "PageUp", "PgDown": "PageDown", "Esc": "Escape", "Del": "Delete",
+    "Ins": "Insert", "Return": "Enter", "Backtab": "Tab",
+}
+# WezTerm prints 'Enter' in show-keys but accepts 'Return' in config; fold both.
+KEY_ALIASES = {"Return": "Enter"}
+
+# System-wide macOS shortcuts (Apple HT201236 and System Settings defaults).
+# Cmd = SUPER, Option = ALT, Control = CTRL.
+MACOS_SYSTEM = [
+    ("SUPER", "Space", "Spotlight"),
+    ("SUPER", "Tab", "Switch application"),
+    ("SUPER", "`", "Switch window of current app"),
+    ("SUPER", "q", "Quit app"),
+    ("SUPER", "h", "Hide app"),
+    ("SUPER|ALT", "h", "Hide other apps"),
+    ("SUPER", "m", "Minimize window"),
+    ("SUPER|ALT", "m", "Minimize all windows of app"),
+    ("SUPER|ALT", "Escape", "Force Quit"),
+    ("SUPER|ALT", "d", "Show/hide Dock"),
+    ("SUPER|SHIFT", "3", "Screenshot: screen"),
+    ("SUPER|SHIFT", "4", "Screenshot: area"),
+    ("SUPER|SHIFT", "5", "Screenshot / recording"),
+    ("SUPER|SHIFT", "q", "Log out"),
+    ("SUPER|CTRL", "q", "Lock screen"),
+    ("SUPER|CTRL", "Space", "Emoji & Symbols"),
+    ("SUPER|CTRL", "f", "Toggle full screen (app)"),
+    ("SUPER|CTRL", "d", "Look up word"),
+    ("CTRL", "UpArrow", "Mission Control"),
+    ("CTRL", "DownArrow", "Application windows"),
+    ("CTRL", "LeftArrow", "Previous Space"),
+    ("CTRL", "RightArrow", "Next Space"),
+    ("CTRL", "Space", "Next input source"),
+    ("CTRL|ALT", "Space", "Previous input source"),
+    ("CTRL", "F2", "Focus menu bar"),
+    ("CTRL", "F3", "Focus Dock"),
+    ("SUPER|ALT|CTRL", "8", "Invert colors (if enabled)"),
+    ("SUPER|ALT|CTRL", "Eject", "Sleep"),
+    ("SUPER", "Eject", "Sleep display"),
+    ("ALT", "Space", "Finder search (configurable)"),
+    ("SUPER|ALT", "Space", "Finder search window"),
+    ("SUPER|SHIFT|ALT", "Escape", "Force quit frontmost app (hold)"),
+]
+
+# CTRL chords the shell (readline / zsh zle) or the tty itself consumes.
+# Binding these in WezTerm steals them from the shell; they are not "free".
+SHELL_CTRL = {
+    "a": "beginning-of-line (leader here)", "b": "backward-char", "c": "SIGINT",
+    "d": "EOF / delete-char", "e": "end-of-line", "f": "forward-char",
+    "g": "abort", "h": "backspace", "i": "tab", "j": "newline", "k": "kill-line",
+    "l": "clear-screen", "m": "enter", "n": "down-history", "o": "accept-line-and-down",
+    "p": "up-history", "q": "XON (flow control)", "r": "history-search",
+    "s": "XOFF (flow control)", "t": "transpose-chars", "u": "kill-whole-line",
+    "v": "quoted-insert", "w": "backward-kill-word", "x": "prefix (C-x ...)",
+    "y": "yank", "z": "SIGTSTP", "[": "escape", "_": "undo", "/": "undo",
+}
+
+ACTIONS = [
+    ("Panes", [
+        "SplitHorizontal", "SplitVertical", "SplitPane", "ActivatePaneDirection",
+        "ActivatePaneByIndex", "AdjustPaneSize", "TogglePaneZoomState",
+        "RotatePanes", "PaneSelect", "CloseCurrentPane", "MovePaneToNewTab",
+    ]),
+    ("Tabs", [
+        "SpawnTab", "ActivateTab", "ActivateTabRelative", "ActivateTabRelativeNoWrap",
+        "ActivateLastTab", "MoveTab", "MoveTabRelative", "CloseCurrentTab",
+        "ShowTabNavigator", "SetTabTitle", "ShowLauncher", "ShowLauncherArgs",
+    ]),
+    ("Windows", [
+        "SpawnWindow", "SpawnCommandInNewTab", "SpawnCommandInNewWindow",
+        "ToggleFullScreen", "ToggleAlwaysOnTop", "ToggleAlwaysOnBottom",
+        "SetWindowLevel", "Hide", "Show", "HideApplication", "QuitApplication",
+        "StartWindowDrag", "AttachDomain", "DetachDomain", "SwitchToWorkspace",
+        "SwitchWorkspaceRelative",
+    ]),
+    ("Clipboard & selection", [
+        "CopyTo", "PasteFrom", "ActivateCopyMode", "CopyMode", "QuickSelect",
+        "QuickSelectArgs", "Search", "SelectTextAtMouseCursor",
+        "ExtendSelectionToMouseCursor", "CompleteSelection",
+        "CompleteSelectionOrOpenLinkAtMouseCursor", "OpenLinkAtMouseCursor",
+        "ClearSelection", "CharSelect",
+    ]),
+    ("Scrolling", [
+        "ScrollByLine", "ScrollByPage", "ScrollToTop", "ScrollToBottom",
+        "ScrollToPrompt", "ClearScrollback",
+    ]),
+    ("Appearance", [
+        "IncreaseFontSize", "DecreaseFontSize", "ResetFontSize",
+        "ResetFontAndWindowSize", "ToggleAlwaysOnTop",
+    ]),
+    ("Input", [
+        "SendKey", "SendString", "Nop", "DisableDefaultAssignment",
+        "ActivateKeyTable", "PopKeyTable", "ClearKeyTableStack",
+    ]),
+    ("Meta", [
+        "ActivateCommandPalette", "ReloadConfiguration", "ShowDebugOverlay",
+        "EmitEvent", "Multiple", "PromptInputLine", "InputSelector", "Confirmation",
+        "OpenUri", "ResetTerminal",
+    ]),
+]
+ACTIONS_DOC = "https://wezterm.org/config/lua/keyassignment/"
+
+# Keys offered in the `free` grid.
+GRID_KEYS = list("abcdefghijklmnopqrstuvwxyz") + list("0123456789") + [
+    "-", "=", "[", "]", ";", "'", ",", ".", "/", "`", "\\",
+    "Enter", "Tab", "Space", "Backspace", "Escape",
+    "LeftArrow", "RightArrow", "UpArrow", "DownArrow", "PageUp", "PageDown",
+    "Home", "End", "Insert", "Delete",
+] + [f"F{i}" for i in range(1, 13)]
+GRID_MODS = ["ALT", "ALT|SHIFT", "CTRL|SHIFT", "CTRL|ALT", "SUPER", "SUPER|SHIFT", "LEADER", "LEADER|SHIFT"]
+
+ANSI = sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
+
+
+def paint(text, code):
+    return f"\033[{code}m{text}\033[0m" if ANSI else text
+
+
+def norm_mods(mods):
+    parts = [m for m in mods.split("|") if m and m != "NONE"]
+    return "|".join(sorted(set(parts), key=MOD_ORDER.index))
+
+
+def norm_key(key, mods):
+    """Lower-case letters and fold SHIFT in, so 'A' == SHIFT+'a'."""
+    key = KEY_ALIASES.get(key, key)
+    mods = norm_mods(mods)
+    if len(key) == 1 and key.isalpha():
+        if key.isupper():
+            mods = norm_mods(mods + "|SHIFT")
+        key = key.lower()
+    return key, mods
+
+
+def find_wezterm():
+    exe = shutil.which("wezterm")
+    if exe:
+        return exe
+    for p in ("/Applications/WezTerm.app/Contents/MacOS/wezterm",
+              os.path.expanduser("~/Applications/WezTerm.app/Contents/MacOS/wezterm")):
+        if os.path.exists(p):
+            return p
+    sys.exit("wezterm-keys: wezterm not found on PATH")
+
+
+def show_keys_lua(wezterm, config_file=None):
+    cmd = [wezterm]
+    if config_file:
+        cmd += ["--config-file", config_file]
+    cmd += ["show-keys", "--lua"]
+    out = subprocess.run(cmd, capture_output=True, text=True)
+    if out.returncode != 0:
+        sys.exit(f"wezterm-keys: {' '.join(cmd)} failed:\n{out.stderr.strip()}")
+    return out.stdout
+
+
+BINDING_RE = re.compile(r"""\{\s*key\s*=\s*'((?:\\.|[^'])*)'\s*,\s*mods\s*=\s*'([^']*)'\s*,\s*action\s*=\s*(.*?)\s*\},?\s*$""")
+
+
+def parse_lua(text):
+    """Return {table_name: {(key, mods): action_text}}. 'keys' is the default table."""
+    tables = {}
+    current = "keys"
+    for line in text.splitlines():
+        s = line.strip()
+        if s == "key_tables = {":
+            current = None
+            continue
+        m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\{$", s)
+        if m and current != "keys" and m.group(1) != "keys":
+            current = m.group(1)
+            continue
+        m = BINDING_RE.match(s)
+        if m and current:
+            key = m.group(1).replace("\\'", "'").replace('\\"', '"')
+            key, mods = norm_key(key, m.group(2))
+            action = re.sub(r"\s+", " ", m.group(3)).replace("act.", "")
+            tables.setdefault(current, {})[(key, mods)] = action
+    return tables
+
+
+def leader(wezterm):
+    out = subprocess.run([wezterm, "show-keys"], capture_output=True, text=True)
+    m = re.search(r"^Leader:\s*(.+)$", out.stdout, re.M)
+    if not m:
+        return None
+    # "Char('a') CTRL 1s" -> "CTRL+a (1s)"
+    parts = m.group(1).split()
+    key = re.sub(r"^Char\('(.)'\)$", r"\1", parts[0])
+    mods = "|".join(parts[1:-1])
+    return f"{mods}+{key} ({parts[-1]})" if mods else f"{key} ({parts[-1]})"
+
+
+def kde_shortcuts():
+    path = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")), "kglobalshortcutsrc")
+    if not os.path.exists(path):
+        return {}
+    cfg = configparser.RawConfigParser(strict=False, interpolation=None)
+    cfg.optionxform = str
+    cfg.read(path)
+    out = {}
+    for section in cfg.sections():
+        friendly = cfg.get(section, "_k_friendly_name", fallback=section)
+        for name, value in cfg.items(section):
+            if name == "_k_friendly_name":
+                continue
+            parts = value.split(",")
+            active = parts[0].strip()
+            if not active or active == "none":
+                continue
+            desc = parts[2].strip() if len(parts) > 2 and parts[2].strip() else name
+            for combo in re.split(r"\\t|\t", active):
+                combo = combo.strip()
+                if combo in KDE_MODS:  # modifier-only shortcut (bare Meta opens the launcher)
+                    out[("<alone>", KDE_MODS[combo])] = f"{desc} ({friendly})"
+                    continue
+                if not combo or combo == "none" or "+" not in combo:
+                    continue  # media keys and other chord-less entries
+                parsed = kde_combo(combo)
+                if parsed:
+                    out[parsed] = f"{desc} ({friendly})"
+    return out
+
+
+def kde_combo(combo):
+    # "Meta+Shift+Left", "Meta++", "Ctrl+Alt+Del"
+    if combo.endswith("++"):
+        tokens = combo[:-2].split("+") + ["+"]
+    else:
+        tokens = combo.split("+")
+    key = tokens[-1]
+    mods = [KDE_MODS.get(t) for t in tokens[:-1]]
+    if None in mods or not key:
+        return None
+    key = KDE_KEYS.get(key, key)
+    if not re.fullmatch(r"F\d+|[A-Za-z]+|.", key):
+        return None
+    if len(key) == 1:
+        key = key.lower()  # KDE writes Meta+A for Meta+a; Shift is always explicit
+    return norm_key(key, "|".join(mods))
+
+
+def macos_shortcuts():
+    return {norm_key(k, m): desc for m, k, desc in MACOS_SYSTEM}
+
+
+def system_shortcuts():
+    if sys.platform == "darwin":
+        return "macOS", macos_shortcuts()
+    desktop = os.environ.get("XDG_CURRENT_DESKTOP", "")
+    if "KDE" in desktop or os.path.exists(os.path.expanduser("~/.config/kglobalshortcutsrc")):
+        return "KDE Plasma", kde_shortcuts()
+    return desktop or "unknown desktop", {}
+
+
+def shell_shortcuts():
+    return {(k, "CTRL"): v for k, v in SHELL_CTRL.items()}
+
+
+def fmt_chord(key, mods):
+    return f"{mods}+{key}" if mods else key
+
+
+def load():
+    wezterm = find_wezterm()
+    effective_text = show_keys_lua(wezterm)
+    with tempfile.NamedTemporaryFile("w", suffix=".lua", delete=False) as f:
+        f.write("return {}\n")
+        empty = f.name
+    try:
+        default_text = show_keys_lua(wezterm, empty)
+    finally:
+        os.unlink(empty)
+    return {
+        "effective": parse_lua(effective_text),
+        "defaults": parse_lua(default_text),
+        "leader": leader(wezterm),
+    }
+
+
+def cmd_list(data):
+    eff = data["effective"].get("keys", {})
+    defs = data["defaults"].get("keys", {})
+    label, system = system_shortcuts()
+    print(f"WezTerm bindings (default key table). leader = {data['leader'] or 'none'}")
+    print(f"[cfg] set in wezterm.lua   [SYS] shadowed by a {label} global shortcut\n")
+    by_mods = {}
+    for (key, mods), action in eff.items():
+        by_mods.setdefault(mods, []).append((key, action))
+    for mods in sorted(by_mods, key=lambda m: (m.count("|"), [MOD_ORDER.index(x) for x in m.split("|")] if m else [])):
+        print(paint(mods or "(no modifier)", "1;36"))
+        for key, action in sorted(by_mods[mods], key=lambda kv: (len(kv[0]) > 1, kv[0].lower())):
+            tags = []
+            d = defs.get((key, mods))
+            if d is None:
+                tags.append(paint("[cfg]", "32"))
+            elif d != action:
+                tags.append(paint("[cfg overrides default]", "33"))
+            sysdesc = system.get((key, mods))
+            if sysdesc:
+                tags.append(paint(f"[SYS: {sysdesc}]", "1;31"))
+            print(f"  {key:12} {action:70} {' '.join(tags)}")
+        print()
+
+
+def cmd_tables(data):
+    for name, table in data["effective"].items():
+        if name == "keys":
+            continue
+        print(paint(f"Key table: {name}", "1;36"))
+        for (key, mods), action in sorted(table.items(), key=lambda kv: (kv[0][1], kv[0][0].lower())):
+            print(f"  {fmt_chord(key, mods):22} {action}")
+        print()
+
+
+def cmd_system(data):
+    label, system = system_shortcuts()
+    print(f"{label} global shortcuts (reach the compositor/OS before WezTerm)\n")
+    if not system:
+        print("  none found for this desktop; add a reader for it in bin/wezterm-keys")
+        return
+    for (key, mods), desc in sorted(system.items(), key=lambda kv: (kv[0][1], kv[0][0].lower())):
+        chord = f"{mods} (alone)" if key == "<alone>" else fmt_chord(key, mods)
+        print(f"  {chord:28} {desc}")
+    print("\nShell / tty CTRL chords (WezTerm passes these to the shell unless bound):")
+    for k, v in SHELL_CTRL.items():
+        print(f"  {'CTRL+' + k:28} {v}")
+    if label == "macOS":
+        print("\nStatic list of Apple defaults. Verify in System Settings > Keyboard > Keyboard Shortcuts.")
+
+
+def cmd_free(data):
+    eff = data["effective"].get("keys", {})
+    label, system = system_shortcuts()
+    shell = shell_shortcuts()
+    print(f"Free chords: '.' free   W wezterm-bound   S {label} shortcut   s shell/tty\n")
+    width = max(len(k) for k in GRID_KEYS)
+    header = f"{'':{width}}  " + "  ".join(f"{m:^12}" for m in GRID_MODS)
+    print(paint(header, "1"))
+    for key in GRID_KEYS:
+        cells = []
+        for mods in GRID_MODS:
+            k, m = norm_key(key, mods)
+            if (k, m) in eff:
+                c = paint("W", "33")
+            elif (k, m) in system:
+                c = paint("S", "1;31")
+            elif (k, m) in shell:
+                c = paint("s", "35")
+            else:
+                c = paint(".", "32")
+            cells.append(f"{c:^12}" if not ANSI else " " * 5 + c + " " * 6)
+        print(f"{key:{width}}  " + "  ".join(cells))
+    print("\nNotes:")
+    print("  * CTRL+<letter> alone is omitted: the shell owns it (see `wezterm-keys system`).")
+    print("  * SHIFT+<letter> alone types a capital. Combos with SHIFT|CTRL are the WezTerm default style.")
+    print(f"  * On this host mod = {'SUPER' if sys.platform == 'darwin' else 'ALT'} in wezterm.lua.")
+    print("  * LEADER chords are always safe from the OS: the leader key is pressed first.")
+
+
+def cmd_actions(data):
+    print(f"KeyAssignment actions (wezterm.action.<Name>). Docs: {ACTIONS_DOC}<Name>.html\n")
+    for group, names in ACTIONS:
+        print(paint(group, "1;36"))
+        for n in names:
+            print(f"  {n:40} {ACTIONS_DOC}{n}.html")
+        print()
+    print("Full list: https://wezterm.org/config/lua/keyassignment/index.html")
+    print("Key names:  https://wezterm.org/config/keys.html")
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else "list"
+    if cmd in ("-h", "--help", "help"):
+        print(__doc__.strip())
+        return 0
+    handlers = {
+        "list": cmd_list, "free": cmd_free, "system": cmd_system,
+        "actions": cmd_actions, "tables": cmd_tables,
+    }
+    if cmd not in handlers:
+        sys.exit(f"wezterm-keys: unknown command {cmd!r}\n\n{__doc__.strip()}")
+    if cmd == "actions":
+        handlers[cmd](None)
+        return 0
+    handlers[cmd](load())
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

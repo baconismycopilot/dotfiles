@@ -6,6 +6,8 @@
 -- key) so it never collides with shell or editor bindings.
 --
 -- Docs: https://wezterm.org/config/lua/config/
+-- Bindings, free chords and OS-reserved shortcuts: bin/wezterm-keys (in the
+-- dotfiles repo), or `wezterm show-keys` for the raw dump.
 
 local wezterm = require("wezterm")
 local act = wezterm.action
