@@ -16,7 +16,7 @@
 #   5. link shell/mise.sh -> $XDG_CONFIG_HOME/shell/mise.sh (sourced by zsh/.zshrc),
 #      hook it into ~/.bashrc, link shell/mise.fish into fish conf.d
 #   6. gitleaks (if missing) + core.hooksPath=.githooks for the pre-push secrets scan
-#   7. symlink wezterm/wezterm.lua   -> $XDG_CONFIG_HOME/wezterm/wezterm.lua
+#   7. symlink wezterm/*.lua          -> $XDG_CONFIG_HOME/wezterm/
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -183,6 +183,9 @@ git -C "$REPO" config core.hooksPath .githooks
 
 # 7. WezTerm config. Symlinked, not copied: it carries no per-host state, and the
 # keybindings pick SUPER or ALT from wezterm.target_triple at load time.
-link "$REPO/wezterm/wezterm.lua" "$XDG_CONFIG_HOME/wezterm/wezterm.lua"
+# keymap.lua is a module wezterm.lua requires, so it must sit next to it.
+for f in "$REPO"/wezterm/*.lua; do
+    link "$f" "$XDG_CONFIG_HOME/wezterm/$(basename "$f")"
+done
 
 say "done. Open a new shell, then: $REPO/bin/uv-init ~/code/myproject"

@@ -68,8 +68,8 @@ approvals are 0 because a solo owner cannot approve their own PR.
 ## Conventions
 
 - Shell scripts: `bash` with `set -euo pipefail`; check with `bash -n`. The zsh
-  files are checked with `zsh -n`. `bin/wezterm-keys` is python3, stdlib only
-  (it must run on a fresh host); check with `python3 -m py_compile`.
+  files are checked with `zsh -n`, the Lua files with `luac -p` and
+  `wezterm --config-file wezterm/wezterm.lua show-keys`.
 - `install.sh` must stay idempotent and back up anything it replaces.
 - Commit messages: short imperative subject, body explains why.
 - Do not add tools to `install.sh` unless a tracked file actually uses them.

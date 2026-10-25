@@ -6,11 +6,16 @@
 -- key) so it never collides with shell or editor bindings.
 --
 -- Docs: https://wezterm.org/config/lua/config/
--- Bindings, free chords and OS-reserved shortcuts: bin/wezterm-keys (in the
--- dotfiles repo), or `wezterm show-keys` for the raw dump.
+-- Leader then ? opens the keymap menu from keymap.lua: bindings, free chords,
+-- OS-reserved shortcuts, action reference. `wezterm show-keys` is the raw dump.
 
 local wezterm = require("wezterm")
 local act = wezterm.action
+
+-- Modules next to this file (keymap.lua) resolve even when WezTerm is started
+-- with --config-file pointing into the repo rather than at $XDG_CONFIG_HOME.
+package.path = wezterm.config_dir .. "/?.lua;" .. package.path
+local keymap = require("keymap")
 
 -- config_builder validates option names and types as they are assigned, so a
 -- typo shows up in the GUI's warning window instead of being silently ignored.
@@ -156,5 +161,9 @@ config.keys = {
 	-- Ctrl+Backspace deletes the previous word, like Ctrl+W.
 	{ key = "Backspace", mods = "CTRL", action = act.SendKey({ key = "w", mods = "CTRL" }) },
 }
+
+-- keymap.lua: leader hints in the tab bar, and leader then ? for the keymap
+-- menu (bindings, free chords, OS-reserved shortcuts, action reference).
+keymap.apply_to_config(config, { menu_key = { key = "?", mods = "LEADER|SHIFT" } })
 
 return config
