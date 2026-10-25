@@ -3,12 +3,21 @@
 --
 -- Window-level chords use SUPER on macOS and ALT elsewhere, with the same keys
 -- on both. Pane management goes through a tmux-style leader (CTRL+a, then a
--- key) so it never collides with shell or editor bindings.
+-- key) so it never collides with shell or editor bindings. keymap.lua turns
+-- the leader into a popup: CTRL+a lists the leader keys with labels, pressing
+-- one runs it, Esc cancels. Leader then ? opens the keymap menu (bindings,
+-- free chords, OS-reserved shortcuts, action reference).
 --
 -- Docs: https://wezterm.org/config/lua/config/
+-- `wezterm show-keys` is the raw binding dump.
 
 local wezterm = require("wezterm")
 local act = wezterm.action
+
+-- Modules next to this file (keymap.lua) resolve even when WezTerm is started
+-- with --config-file pointing into the repo rather than at $XDG_CONFIG_HOME.
+package.path = wezterm.config_dir .. "/?.lua;" .. package.path
+local keymap = require("keymap")
 
 -- config_builder validates option names and types as they are assigned, so a
 -- typo shows up in the GUI's warning window instead of being silently ignored.
@@ -107,6 +116,10 @@ end)
 -- Keys. WezTerm's default bindings stay active alongside these.
 ---------------------------------------------------------------------------
 
+-- The leader chord. keymap.apply_to_config below reads it, binds it to the
+-- leader popup and clears it, so the timeout does not apply: the popup stays
+-- open until a key is pressed or Esc. Entries with mods = "LEADER" are what
+-- the popup lists.
 config.leader = { key = "a", mods = "CTRL", timeout_milliseconds = 1000 }
 
 config.keys = {
@@ -154,5 +167,14 @@ config.keys = {
 	-- Ctrl+Backspace deletes the previous word, like Ctrl+W.
 	{ key = "Backspace", mods = "CTRL", action = act.SendKey({ key = "w", mods = "CTRL" }) },
 }
+
+-- keymap.lua: CTRL+a opens the leader popup; leader then ? opens the keymap
+-- menu (bindings, free chords, OS-reserved shortcuts, action reference).
+-- Popup labels are derived from the action; override any by key:
+--   labels = { ["|"] = "split side by side", ["CTRL+a"] = "literal CTRL+a" }
+keymap.apply_to_config(config, {
+	menu_key = { key = "?", mods = "LEADER|SHIFT" },
+	labels = {},
+})
 
 return config

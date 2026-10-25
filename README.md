@@ -32,7 +32,7 @@ exec $SHELL
 | `zsh/` | if `zsh` is present: installs oh-my-zsh, powerlevel10k, zsh-syntax-highlighting (skipped on CachyOS), neovim, then symlinks every file under `zsh/` into `$HOME` (differing files backed up). Per-host edits go in `~/.zshrc.local` |
 | `shell/mise.sh` | linked to `$XDG_CONFIG_HOME/shell/mise.sh` and sourced by the repo `~/.zshrc`; hooked into `~/.bashrc`; `shell/mise.fish` linked into fish `conf.d/` |
 | gitleaks | installed if missing; `core.hooksPath` set to `.githooks` so the pre-push secrets scan runs |
-| `wezterm/wezterm.lua` | symlinked to `$XDG_CONFIG_HOME/wezterm/wezterm.lua` |
+| `wezterm/*.lua` | symlinked into `$XDG_CONFIG_HOME/wezterm/` |
 
 Supported: macOS, Linux, WSL with bash, zsh or fish. Native Windows has no
 direnv shell hook; use WSL.
@@ -79,7 +79,7 @@ leader, `Ctrl+A` then a key, so it never collides with shell or editor keys.
 | `Ctrl+A` then `\|` / `-` | split pane side by side / stacked |
 | `Ctrl+A` then `H` `J` `K` `L` | move between panes |
 | `Ctrl+A` then `Z` | zoom the current pane |
-| `Ctrl+A` then `Ctrl+A` | send a literal `Ctrl+A` to the shell |
+| `Ctrl+A` then `A` | send a literal `Ctrl+A` to the shell |
 | `Cmd+T` / `Alt+T` | new tab |
 | `Cmd+W` / `Alt+W` | close pane (asks first) |
 | `Cmd+[` `Cmd+]` / `Alt+[` `Alt+]` | previous / next tab |
@@ -91,6 +91,40 @@ leader, `Ctrl+A` then a key, so it never collides with shell or editor keys.
 
 Font stack is JetBrains Mono with Nerd Font symbols as fallback. WezTerm
 bundles both, so nothing needs installing for the Powerlevel10k glyphs.
+
+The table above is a summary. `wezterm/keymap.lua` is a small plugin, loaded
+by `wezterm.lua`, that shows the real state from inside WezTerm:
+
+- **Leader popup.** `Ctrl+A` opens an overlay listing every leader key with
+  a short label (`h  pane ←`, `|  split │`, ...). Press the key and it runs;
+  `Esc` cancels, `/` filters. The overlay only sees unshifted keys, so a
+  shifted leader key is reached through its unshifted twin (`|` via `\`) or a
+  spare digit (`?` via `1`); the row says which. This replaces WezTerm's native
+  leader, which has no way to show hints, so the leader timeout no longer
+  applies.
+- **Keymap menu** on `Ctrl+A` then `?`, fuzzy-searchable:
+
+  | entry | what |
+  | --- | --- |
+  | Bindings | pick a modifier set (row shows the count and class mix), then every chord in it. Enter runs it |
+  | Chord audit | pick a modifier set, then every key marked free / wezterm / OS / shell. Enter copies a `{ key = ..., mods = ..., action = ... }` line |
+  | System shortcuts | KDE Plasma globals from `~/.config/kglobalshortcutsrc`, or Apple's macOS defaults, plus the `Ctrl`/`Alt` chords the shell uses |
+  | Actions | `KeyAssignment` reference; Enter opens the docs page |
+  | Full report | all of the above as text in a new tab |
+
+  Rows are coloured by class: blue built-in WezTerm binding, green yours (or a
+  free chord), yellow a custom binding that replaced a default, red the OS
+  grabs it first, purple the shell uses it.
+
+- **Load-time warnings.** A custom chord that a desktop shortcut shadows is
+  reported with `wezterm.log_warn` (visible in the debug overlay, "Show debug
+  overlay" in the command palette).
+
+Options are passed to `keymap.apply_to_config(config, opts)`: `menu_key`
+(default `?` with `LEADER|SHIFT`), `popup`, `labels` (override a popup label
+by key, e.g. `{ ["|"] = "split side by side" }`), `warn_on_load`,
+`report_path`. Inside WezTerm, `Ctrl+Shift+P` opens the command palette, which
+also lists every action with its binding.
 
 ## Repo management
 
@@ -148,6 +182,7 @@ zsh/.config/shell/vims.env               nvim NVIM_APPNAME aliases
 zsh/.config/shell/onedark-*.zsh          onedark colors for zsh-syntax-highlighting
 examples/bs-be18000.env.example          template for a machine-local secret
 wezterm/wezterm.lua           WezTerm config (symlinked to $XDG_CONFIG_HOME/wezterm/)
+wezterm/keymap.lua            keymap plugin: leader hints, bindings/free-chord/OS-shortcut menu
 install.sh                    bootstrap
 ```
 
