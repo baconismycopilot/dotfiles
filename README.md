@@ -67,13 +67,21 @@ zsh-specific; bash/fish users get the Python workflow above but not this.
 
 `wezterm/wezterm.lua` is the one terminal config for every OS. `install.sh`
 symlinks it to `$XDG_CONFIG_HOME/wezterm/wezterm.lua`; WezTerm reloads it on
-save. The keybindings use `SUPER` on macOS and `ALT` on Linux, chosen from
+save. Window-level chords use `SUPER` on macOS and `ALT` on Linux, chosen from
 `wezterm.target_triple` at load time, so the same file gives the same chords
-on both without a per-host copy.
+on both without a per-host copy. Pane management goes through a tmux-style
+leader, `Ctrl+A` then a key, so it never collides with shell or editor keys.
 
 | key (macOS / Linux) | action |
 | --- | --- |
 | `Cmd+D` / `Alt+D`, with `Shift` | split pane side by side / stacked |
+| `Ctrl+A` then `\|` / `-` | split pane side by side / stacked |
+| `Ctrl+A` then `H` `J` `K` `L` | move between panes |
+| `Ctrl+A` then `Z` | zoom the current pane |
+| `Ctrl+A` then `Ctrl+A` | send a literal `Ctrl+A` to the shell |
+| `Cmd+T` / `Alt+T` | new tab |
+| `Cmd+W` / `Alt+W` | close pane (asks first) |
+| `Cmd+[` `Cmd+]` / `Alt+[` `Alt+]` | previous / next tab |
 | `Cmd+Return` / `Alt+Return` | toggle fullscreen |
 | `Cmd+K` / `Alt+K` | clear scrollback and screen |
 | `Cmd+U` / `Alt+U` | toggle 90% window opacity |
