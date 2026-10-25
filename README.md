@@ -32,6 +32,7 @@ exec $SHELL
 | `zsh/` | if `zsh` is present: installs oh-my-zsh, powerlevel10k, zsh-syntax-highlighting (skipped on CachyOS), neovim, then **copies** `zsh/` into `$HOME` (existing files backed up). Not symlinked, so per-host edits stay local |
 | `shell/mise.sh` | linked to `$XDG_CONFIG_HOME/shell/mise.sh` and sourced by the repo `~/.zshrc`; hooked into `~/.bashrc`; `shell/mise.fish` linked into fish `conf.d/` |
 | gitleaks | installed if missing; `core.hooksPath` set to `.githooks` so the pre-push secrets scan runs |
+| `wezterm/wezterm.lua` | symlinked to `$XDG_CONFIG_HOME/wezterm/wezterm.lua` |
 
 Supported: macOS, Linux, WSL with bash, zsh or fish. Native Windows has no
 direnv shell hook; use WSL.
@@ -61,6 +62,26 @@ file it would overwrite is backed up to `*.bak.<timestamp>`.
   prompt so direnv output never triggers p10k's console-output warning.
 
 zsh-specific; bash/fish users get the Python workflow above but not this.
+
+## Terminal (WezTerm)
+
+`wezterm/wezterm.lua` is the one terminal config for every OS. `install.sh`
+symlinks it to `$XDG_CONFIG_HOME/wezterm/wezterm.lua`; WezTerm reloads it on
+save. The keybindings use `SUPER` on macOS and `ALT` on Linux, chosen from
+`wezterm.target_triple` at load time, so the same file gives the same chords
+on both without a per-host copy.
+
+| key (macOS / Linux) | action |
+| --- | --- |
+| `Cmd+D` / `Alt+D`, with `Shift` | split pane side by side / stacked |
+| `Cmd+Return` / `Alt+Return` | toggle fullscreen |
+| `Cmd+K` / `Alt+K` | clear scrollback and screen |
+| `Cmd+U` / `Alt+U` | toggle 90% window opacity |
+| `Ctrl+Shift+L` | toggle font ligatures |
+| `Ctrl+Backspace` | delete previous word (sends `Ctrl+W`) |
+
+Font stack is JetBrains Mono with Nerd Font symbols as fallback. WezTerm
+bundles both, so nothing needs installing for the Powerlevel10k glyphs.
 
 ## Repo management
 
@@ -117,6 +138,7 @@ zsh/.zshrc .zprofile .zshenv .p10k.zsh   zsh + oh-my-zsh + powerlevel10k (copied
 zsh/.config/shell/vims.env               nvim NVIM_APPNAME aliases
 zsh/.config/shell/onedark-*.zsh          onedark colors for zsh-syntax-highlighting
 examples/bs-be18000.env.example          template for a machine-local secret
+wezterm/wezterm.lua           WezTerm config (symlinked to $XDG_CONFIG_HOME/wezterm/)
 install.sh                    bootstrap
 ```
 
