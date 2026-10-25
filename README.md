@@ -97,17 +97,24 @@ by `wezterm.lua`, that shows the real state from inside WezTerm:
 
 - **Leader popup.** `Ctrl+A` opens an overlay listing every leader key with
   a short label (`h  pane ←`, `|  split │`, ...). Press the key and it runs;
-  `Esc` cancels, `/` filters. This replaces WezTerm's native leader, which has
-  no way to show hints, so the leader timeout no longer applies.
+  `Esc` cancels, `/` filters. The overlay only sees unshifted keys, so a
+  shifted leader key is reached through its unshifted twin (`|` via `\`) or a
+  spare digit (`?` via `1`); the row says which. This replaces WezTerm's native
+  leader, which has no way to show hints, so the leader timeout no longer
+  applies.
 - **Keymap menu** on `Ctrl+A` then `?`, fuzzy-searchable:
 
   | entry | what |
   | --- | --- |
-  | Bindings | every active chord, WezTerm defaults and custom; `[cfg]` set here, `[cfg*]` overrides a default, `[SYS: ...]` the desktop grabs it first. Enter runs it |
-  | Chord audit | each chord per modifier set marked free / wezterm / system / shell. Enter copies a `{ key = ..., mods = ..., action = ... }` line |
+  | Bindings | pick a modifier set (row shows the count and class mix), then every chord in it. Enter runs it |
+  | Chord audit | pick a modifier set, then every key marked free / wezterm / OS / shell. Enter copies a `{ key = ..., mods = ..., action = ... }` line |
   | System shortcuts | KDE Plasma globals from `~/.config/kglobalshortcutsrc`, or Apple's macOS defaults, plus the `Ctrl`/`Alt` chords the shell uses |
   | Actions | `KeyAssignment` reference; Enter opens the docs page |
   | Full report | all of the above as text in a new tab |
+
+  Rows are coloured by class: blue built-in WezTerm binding, green yours (or a
+  free chord), yellow a custom binding that replaced a default, red the OS
+  grabs it first, purple the shell uses it.
 
 - **Load-time warnings.** A custom chord that a desktop shortcut shadows is
   reported with `wezterm.log_warn` (visible in the debug overlay, "Show debug

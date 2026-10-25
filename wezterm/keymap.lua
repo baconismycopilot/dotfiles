@@ -548,6 +548,45 @@ local function pad(s, n)
 	return s .. string.rep(" ", math.max(0, n - len))
 end
 
+-- One colour per class, used in every list. AnsiColor follows the colour
+-- scheme, so the lists stay readable on any theme.
+--   builtin  WezTerm default binding        custom   set in wezterm.lua
+--   override wezterm.lua replaced a default  system   the desktop/OS grabs it
+--   shell    readline / tty chord            free     nothing claims it
+local COLOR = {
+	builtin = { AnsiColor = "Blue" },
+	custom = { AnsiColor = "Green" },
+	override = { AnsiColor = "Yellow" },
+	system = { AnsiColor = "Red" },
+	shell = { AnsiColor = "Purple" },
+	free = { AnsiColor = "Green" },
+	dim = { AnsiColor = "Grey" },
+}
+local LEGEND = "blue built-in · green yours/free · yellow overrides a default · red OS grabs it · purple shell"
+
+-- InputSelector labels go through the same parser as the status bar, so
+-- wezterm.format escapes render as colours.
+local function colored(text, color, bold)
+	local parts = { { Foreground = color } }
+	if bold then
+		parts[#parts + 1] = { Attribute = { Intensity = "Bold" } }
+	end
+	parts[#parts + 1] = { Text = text }
+	parts[#parts + 1] = "ResetAttributes"
+	return wezterm.format(parts)
+end
+
+local function class_of(b, system)
+	if system[chord_id(b.key, b.mods)] then
+		return "system"
+	elseif b.source == "config" then
+		return "custom"
+	elseif b.source == "override" then
+		return "override"
+	end
+	return "builtin"
+end
+
 function M.report(config)
 	local out = {}
 	local function line(s)
@@ -572,7 +611,8 @@ function M.report(config)
 		line("Leader popup")
 		line(string.rep("-", 12))
 		for _, e in ipairs(M.leader_entries) do
-			line("  " .. pad(e.display, 10) .. pad(e.label, 24) .. M.describe(e.action))
+			local press = e.quick ~= e.key and ("(press " .. e.quick .. ")") or ""
+			line("  " .. pad(e.display, 10) .. pad(press, 12) .. pad(e.label, 24) .. M.describe(e.action))
 		end
 	end
 	line()
@@ -686,11 +726,12 @@ end
 -- UI: InputSelector menus.
 ---------------------------------------------------------------------------
 
-local function selector(title, choices, on_select)
+local function selector(title, choices, on_select, description)
 	return act.InputSelector({
 		title = title,
 		choices = choices,
 		fuzzy = true,
+		description = description,
 		fuzzy_description = "Type to filter " .. title:lower() .. ": ",
 		action = wezterm.action_callback(function(window, pane, id, label)
 			if id then
@@ -700,35 +741,96 @@ local function selector(title, choices, on_select)
 	})
 end
 
-local function bindings_selector(window)
+local function mods_label(mods)
+	return mods ~= "" and mods or "(no modifier)"
+end
+
+-- Bindings for one modifier set (or all when mods is nil), coloured by class.
+local function bindings_list(window, mods)
 	local config = window:effective_config()
-	local list = M.bindings(config)
+	local all = M.bindings(config)
 	local _, system = M.system_shortcuts()
-	local choices = {}
-	for i, b in ipairs(list) do
-		local tag = b.source == "config" and "[cfg]" or (b.source == "override" and "[cfg*]" or "")
-		local sys = system[chord_id(b.key, b.mods)]
-		if sys then
-			tag = tag .. " [SYS: " .. sys.desc .. "]"
+	local list, choices = {}, {}
+	for _, b in ipairs(all) do
+		if mods == nil or b.mods == mods then
+			list[#list + 1] = b
+			local class = class_of(b, system)
+			local text = pad(mods and b.key or b.chord, mods and 12 or 22) .. " " .. pad(M.short(b.action), 18) .. " " .. pad(b.desc, 40)
+			local tag = ""
+			if class == "system" then
+				tag = "  OS: " .. system[chord_id(b.key, b.mods)].desc
+			elseif class == "override" then
+				tag = "  was: " .. b.overrides
+			end
+			choices[#choices + 1] = { id = tostring(#list), label = colored(text, COLOR[class]) .. colored(tag, COLOR.dim) }
 		end
-		choices[#choices + 1] = { id = tostring(i), label = pad(b.chord, 22) .. " " .. pad(M.short(b.action), 18) .. " " .. pad(b.desc, 44) .. " " .. tag }
 	end
-	return selector("Bindings", choices, function(w, p, id)
+	return selector("Bindings " .. (mods and mods_label(mods) or "(all)"), choices, function(w, p, id)
 		local b = list[tonumber(id)]
 		if b then
 			w:perform_action(b.action, p)
 		end
-	end)
+	end, "Enter runs the binding · " .. LEGEND)
 end
 
-local function audit_selector(window)
-	local rows = M.audit(window:effective_config())
+-- First pick a modifier set; each row shows how many bindings it holds and
+-- the class mix, so the long default tables stay out of the way.
+local function bindings_selector(window)
+	local config = window:effective_config()
+	local all = M.bindings(config)
+	local _, system = M.system_shortcuts()
+	local groups, order = {}, {}
+	for _, b in ipairs(all) do
+		local g = groups[b.mods]
+		if not g then
+			g = { mods = b.mods, n = 0, custom = 0, override = 0, system = 0 }
+			groups[b.mods] = g
+			order[#order + 1] = g
+		end
+		g.n = g.n + 1
+		local class = class_of(b, system)
+		if class ~= "builtin" then
+			g[class] = g[class] + 1
+		end
+	end
+	local choices = { { id = "*", label = pad("all", 18) .. colored(#all .. " bindings, one list", COLOR.dim) } }
+	for _, g in ipairs(order) do
+		local bits = {}
+		if g.custom > 0 then
+			bits[#bits + 1] = colored(g.custom .. " yours", COLOR.custom)
+		end
+		if g.override > 0 then
+			bits[#bits + 1] = colored(g.override .. " override", COLOR.override)
+		end
+		if g.system > 0 then
+			bits[#bits + 1] = colored(g.system .. " OS", COLOR.system)
+		end
+		local builtin = g.n - g.custom - g.override - g.system
+		if builtin > 0 then
+			bits[#bits + 1] = colored(builtin .. " built-in", COLOR.builtin)
+		end
+		choices[#choices + 1] = { id = g.mods, label = pad(mods_label(g.mods), 18) .. table.concat(bits, "  ") }
+	end
+	return selector("Bindings", choices, function(w, p, id)
+		w:perform_action(bindings_list(w, id ~= "*" and id or nil), p)
+	end, "Pick a modifier set · " .. LEGEND)
+end
+
+-- Chord audit for one modifier set: every key, coloured by who owns it.
+local function audit_list(window, mods)
+	local rows = {}
+	for _, r in ipairs(M.audit(window:effective_config())) do
+		if r.mods == mods then
+			rows[#rows + 1] = r
+		end
+	end
 	local choices = {}
 	for i, r in ipairs(rows) do
-		local status = ({ free = "free", wezterm = "wezterm: ", system = "system: ", shell = "shell: " })[r.status]
-		choices[#choices + 1] = { id = tostring(i), label = pad(r.chord, 22) .. " " .. status .. r.desc }
+		local what = ({ free = "free", wezterm = "wezterm", system = "OS", shell = "shell" })[r.status]
+		local class = ({ free = "free", wezterm = "builtin", system = "system", shell = "shell" })[r.status]
+		choices[#choices + 1] = { id = tostring(i), label = colored(pad(r.key, 12) .. " " .. pad(what, 8), COLOR[class]) .. colored(r.desc, COLOR.dim) }
 	end
-	return selector("Chord audit", choices, function(w, _, id)
+	return selector("Chord audit " .. mods, choices, function(w, _, id)
 		local r = rows[tonumber(id)]
 		if not r then
 			return
@@ -736,7 +838,35 @@ local function audit_selector(window)
 		local snippet = string.format('{ key = "%s", mods = "%s", action = act.Nop },', r.key:gsub('"', '\\"'), r.mods)
 		w:copy_to_clipboard(snippet, "Clipboard")
 		w:toast_notification("keymap", "Copied: " .. snippet .. (r.status ~= "free" and ("\n(" .. r.status .. ": " .. r.desc .. ")") or ""), nil, 4000)
-	end)
+	end, "Enter copies a config line · " .. LEGEND)
+end
+
+local function audit_selector(window)
+	local rows = M.audit(window:effective_config())
+	local counts = {}
+	for _, r in ipairs(rows) do
+		local c = counts[r.mods] or { free = 0, wezterm = 0, system = 0, shell = 0 }
+		c[r.status] = c[r.status] + 1
+		counts[r.mods] = c
+	end
+	local choices = {}
+	for _, m in ipairs(GRID_MODS) do
+		local c = counts[m]
+		local bits = { colored(c.free .. " free", COLOR.free) }
+		if c.wezterm > 0 then
+			bits[#bits + 1] = colored(c.wezterm .. " wezterm", COLOR.builtin)
+		end
+		if c.system > 0 then
+			bits[#bits + 1] = colored(c.system .. " OS", COLOR.system)
+		end
+		if c.shell > 0 then
+			bits[#bits + 1] = colored(c.shell .. " shell", COLOR.shell)
+		end
+		choices[#choices + 1] = { id = m, label = pad(m, 18) .. table.concat(bits, "  ") }
+	end
+	return selector("Chord audit", choices, function(w, p, id)
+		w:perform_action(audit_list(w, id), p)
+	end, "Pick a modifier set · " .. LEGEND)
 end
 
 local function system_selector()
@@ -744,17 +874,17 @@ local function system_selector()
 	local shell = M.shell_shortcuts()
 	local rows = {}
 	for _, v in pairs(system) do
-		rows[#rows + 1] = { chord = v.chord, desc = label .. ": " .. v.desc }
+		rows[#rows + 1] = { chord = v.chord, desc = label .. ": " .. v.desc, class = "system" }
 	end
 	for _, v in pairs(shell) do
-		rows[#rows + 1] = { chord = v.chord, desc = "shell: " .. v.desc }
+		rows[#rows + 1] = { chord = v.chord, desc = "shell: " .. v.desc, class = "shell" }
 	end
 	table.sort(rows, function(a, b)
 		return a.chord < b.chord
 	end)
 	local choices = {}
 	for i, r in ipairs(rows) do
-		choices[#choices + 1] = { id = tostring(i), label = pad(r.chord, 28) .. " " .. r.desc }
+		choices[#choices + 1] = { id = tostring(i), label = colored(pad(r.chord, 28), COLOR[r.class]) .. " " .. r.desc }
 	end
 	return selector("System shortcuts", choices, function(w, _, id)
 		local r = rows[tonumber(id)]
@@ -799,7 +929,7 @@ end
 function M.menu_action(opts)
 	opts = opts or DEFAULTS
 	local menu_key = opts.menu_key and chord(norm(opts.menu_key.key, opts.menu_key.mods)) or "keymap"
-	return selector("Keymap", {
+	return selector("Keymap menu", {
 		{ id = "bindings", label = pad("Bindings", 20) .. "every active chord; Enter runs it" },
 		{ id = "audit", label = pad("Chord audit", 20) .. "free / taken chords per modifier; Enter copies a config line" },
 		{ id = "system", label = pad("System shortcuts", 20) .. "what the desktop and the shell grab first" },
@@ -824,6 +954,24 @@ end
 -- Leader popup: an InputSelector whose quick-select alphabet is the set of
 -- leader keys, so <leader> h runs the h binding without pressing Enter.
 ---------------------------------------------------------------------------
+
+-- US-layout unshifted twin of a shifted character.
+local SHIFT_PAIRS = {
+	["~"] = "`", ["!"] = "1", ["@"] = "2", ["#"] = "3", ["$"] = "4", ["%"] = "5", ["^"] = "6",
+	["&"] = "7", ["*"] = "8", ["("] = "9", [")"] = "0", ["_"] = "-", ["+"] = "=", ["{"] = "[",
+	["}"] = "]", ["|"] = "\\", [":"] = ";", ['"'] = "'", ["<"] = ",", [">"] = ".", ["?"] = "/",
+}
+
+local function quick_candidate(key)
+	if #key ~= 1 then
+		return nil
+	end
+	local c = SHIFT_PAIRS[key] or key:lower()
+	if c == "/" then
+		return nil
+	end
+	return c
+end
 
 local function leader_popup(config, opts)
 	local entries = {}
@@ -869,11 +1017,13 @@ local function leader_popup(config, opts)
 		return a.extra < b.extra
 	end)
 
-	-- Quick keys: the bare key for single-character keys, first come first
-	-- served; the rest get an unused digit so every entry stays one keypress.
+	-- Quick keys. The overlay only matches unmodified keys, so a shifted key
+	-- (| ? A) is reached through its unshifted twin (\ / a) when that is
+	-- free; / is the overlay's filter key and never a quick key. Whatever is
+	-- left gets an unused digit, so every entry stays one keypress.
 	local ordered, alphabet, used, rest = {}, {}, {}, {}
 	for _, e in ipairs(entries) do
-		local c = (#e.key == 1) and e.key or nil
+		local c = quick_candidate(e.key)
 		if c and not used[c] then
 			used[c] = true
 			ordered[#ordered + 1] = e
@@ -894,7 +1044,7 @@ local function leader_popup(config, opts)
 			used[d] = true
 			alphabet[#alphabet + 1] = d
 			ordered[#ordered + 1] = e
-			wezterm.log_warn("keymap: leader popup: " .. e.display .. " has no free quick key; press " .. d .. " for it")
+			wezterm.log_info("keymap: leader popup: " .. e.display .. " has no unshifted quick key; press " .. d .. " for it")
 		else
 			wezterm.log_warn("keymap: leader popup: " .. e.display .. " left out; too many entries for one-key selection")
 		end
@@ -902,14 +1052,18 @@ local function leader_popup(config, opts)
 
 	local choices = {}
 	for i, e in ipairs(ordered) do
-		choices[i] = { id = tostring(i), label = pad(e.display, 8) .. e.label }
+		e.quick = alphabet[i]
+		-- The overlay prints the quick key itself; repeat the real key only
+		-- when it differs (CTRL+a, or | reached through \).
+		local shown = e.display ~= e.quick and pad(e.display, 8) or ""
+		choices[i] = { id = tostring(i), label = shown .. e.label }
 	end
 	M.leader_entries = ordered
 	return act.InputSelector({
 		title = "Leader",
 		choices = choices,
 		alphabet = table.concat(alphabet),
-		description = "press a key · Esc cancels · / filters",
+		description = "press the key · Esc cancels · / filters (shifted keys: press the unshifted key shown)",
 		fuzzy_description = "Leader: ",
 		action = wezterm.action_callback(function(window, pane, id)
 			local e = ordered[tonumber(id or "")]
