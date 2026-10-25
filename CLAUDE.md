@@ -4,9 +4,10 @@ Guidance for Claude Code when working in this repo. Keep this file under 200 lin
 
 ## What this repo is
 
-Personal dotfiles for a mise + direnv + uv Python workflow plus an interactive
-zsh setup (oh-my-zsh + Powerlevel10k). `install.sh` symlinks the mise/direnv
-config and **copies** `zsh/` into `$HOME`. See `README.md` for the layout.
+Personal dotfiles for a mise + direnv + uv Python workflow, an interactive zsh
+setup (oh-my-zsh + Powerlevel10k) and a WezTerm config. `install.sh` symlinks
+the mise/direnv/wezterm config and **copies** `zsh/` into `$HOME`. See
+`README.md` for the layout.
 
 The repo is **public**. Treat every file and every commit as world-readable.
 
