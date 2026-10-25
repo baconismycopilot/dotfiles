@@ -11,8 +11,8 @@
 #      symlink direnv/direnv.toml    -> $XDG_CONFIG_HOME/direnv/direnv.toml
 #   4. mise install                  (uv, direnv from mise/config.toml)
 #   4b. zsh (if present): oh-my-zsh + powerlevel10k + zsh-syntax-highlighting
-#       (skipped on CachyOS, which ships them as packages) + neovim, then copy
-#       zsh/ into $HOME (backing up existing files)
+#       (skipped on CachyOS, which ships them as packages) + neovim, then
+#       symlink every file under zsh/ into $HOME (backing up existing files)
 #   5. link shell/mise.sh -> $XDG_CONFIG_HOME/shell/mise.sh (sourced by zsh/.zshrc),
 #      hook it into ~/.bashrc, link shell/mise.fish into fish conf.d
 #   6. gitleaks (if missing) + core.hooksPath=.githooks for the pre-push secrets scan
@@ -26,14 +26,17 @@ MISE_BIN="$HOME/.local/bin/mise"
 say()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarn:\033[0m %s\n' "$*" >&2; }
 
-# link SRC DST — replace DST with a symlink to SRC, backing up any real file.
+# link SRC DST — replace DST with a symlink to SRC, backing up any real file
+# whose contents differ from SRC (an identical copy is just dropped).
 link() {
     local src="$1" dst="$2"
     mkdir -p "$(dirname "$dst")"
     if [ -L "$dst" ] && [ "$(readlink "$dst")" = "$src" ]; then
         return
     fi
-    if [ -e "$dst" ] || [ -L "$dst" ]; then
+    if [ -f "$dst" ] && [ ! -L "$dst" ] && cmp -s "$src" "$dst"; then
+        rm -f "$dst"
+    elif [ -e "$dst" ] || [ -L "$dst" ]; then
         warn "backing up $dst -> $dst.bak"
         mv -f "$dst" "$dst.bak"
     fi
@@ -81,19 +84,13 @@ clone_if_missing() {
     git clone --depth=1 "$1" "$2"
 }
 
-# copy_tree SRC DST — copy every file under SRC into DST, backing up changed files.
-copy_tree() {
-    local src="$1" dst="$2" ts rel target
-    ts="$(date +%Y%m%d%H%M%S)"
+# link_tree SRC DST — symlink every file under SRC to the same path under DST.
+# Files, not directories, so ~/.config stays a real directory shared with
+# other tools.
+link_tree() {
+    local src="$1" dst="$2" f
     while IFS= read -r -d '' f; do
-        rel="${f#"$src"/}"
-        target="$dst/$rel"
-        mkdir -p "$(dirname "$target")"
-        if [ -e "$target" ] && ! cmp -s "$f" "$target"; then
-            cp -p "$target" "$target.bak.$ts"
-            say "backed up $rel -> $rel.bak.$ts"
-        fi
-        cp "$f" "$target"
+        link "$f" "$dst/${f#"$src"/}"
     done < <(find "$src" -type f -print0)
 }
 
@@ -138,7 +135,7 @@ if command -v zsh >/dev/null 2>&1; then
     else
         if [ ! -d "$HOME/.oh-my-zsh" ]; then
             say "installing oh-my-zsh"
-            # KEEP_ZSHRC=yes so the installer does not clobber the .zshrc we copy below.
+            # KEEP_ZSHRC=yes so the installer does not clobber the .zshrc we link below.
             RUNZSH=no CHSH=no KEEP_ZSHRC=yes \
                 sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
         fi
@@ -154,8 +151,10 @@ if command -v zsh >/dev/null 2>&1; then
         pkg_install neovim || warn "neovim failed to install; continuing"
     fi
 
-    say "copying zsh dotfiles into \$HOME (existing files backed up to *.bak.<ts>)"
-    copy_tree "$REPO/zsh" "$HOME"
+    # Symlinked, not copied: per-host settings go in ~/.zshrc.local, and a link
+    # means `p10k configure` and any edit land in the repo where git shows them.
+    say "linking zsh dotfiles into \$HOME (differing files backed up to *.bak)"
+    link_tree "$REPO/zsh" "$HOME"
 
     # Machine-local secret scaffold — never tracked by git.
     mkdir -p "$HOME/.local/user-secrets"
@@ -168,7 +167,7 @@ else
 fi
 
 # 5. shell hooks. zsh/.zshrc sources the linked mise.sh itself, so ~/.zshrc is
-# not appended to (that would make every re-run back up and re-copy it).
+# not appended to (it is a symlink into the repo).
 link "$REPO/shell/mise.sh" "$XDG_CONFIG_HOME/shell/mise.sh"
 [ -f "$HOME/.bashrc" ] || [ "${SHELL##*/}" = "bash" ] && ensure_line "$HOME/.bashrc" "[ -r \"$REPO/shell/mise.sh\" ] && source \"$REPO/shell/mise.sh\""
 if [ -d "$XDG_CONFIG_HOME/fish" ] || command -v fish >/dev/null 2>&1; then

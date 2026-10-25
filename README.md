@@ -29,7 +29,7 @@ exec $SHELL
 | `direnv/lib/*.sh` | symlinked into `$XDG_CONFIG_HOME/direnv/lib/`; direnv auto-loads them |
 | `direnv/direnv.toml` | symlinked; raises the slow-`.envrc` warning to 1m for `uv sync` |
 | `mise install` | installs the global tools above |
-| `zsh/` | if `zsh` is present: installs oh-my-zsh, powerlevel10k, zsh-syntax-highlighting (skipped on CachyOS), neovim, then **copies** `zsh/` into `$HOME` (existing files backed up). Not symlinked, so per-host edits stay local |
+| `zsh/` | if `zsh` is present: installs oh-my-zsh, powerlevel10k, zsh-syntax-highlighting (skipped on CachyOS), neovim, then symlinks every file under `zsh/` into `$HOME` (differing files backed up). Per-host edits go in `~/.zshrc.local` |
 | `shell/mise.sh` | linked to `$XDG_CONFIG_HOME/shell/mise.sh` and sourced by the repo `~/.zshrc`; hooked into `~/.bashrc`; `shell/mise.fish` linked into fish `conf.d/` |
 | gitleaks | installed if missing; `core.hooksPath` set to `.githooks` so the pre-push secrets scan runs |
 | `wezterm/wezterm.lua` | symlinked to `$XDG_CONFIG_HOME/wezterm/wezterm.lua` |
@@ -40,9 +40,10 @@ direnv shell hook; use WSL.
 ## Shell (zsh)
 
 This repo also carries my interactive zsh setup (oh-my-zsh + Powerlevel10k).
-`install.sh` installs the prerequisites and **copies** the `zsh/` files into
-`$HOME` — copied, not symlinked, so per-host tweaks stay out of the repo. Any
-file it would overwrite is backed up to `*.bak.<timestamp>`.
+`install.sh` installs the prerequisites and symlinks each file under `zsh/`
+into `$HOME`, so `p10k configure` and any edit show up in `git status`.
+Per-host tweaks go in `~/.zshrc.local`, which `.zshrc` sources last. Any
+differing file it would replace is backed up to `*.bak`.
 
 - **CachyOS:** if `/usr/share/cachyos-zsh-config/cachyos-config.zsh` exists,
   `~/.zshrc` sources it instead of `~/.oh-my-zsh`. That gives the pacman-packaged
@@ -134,7 +135,7 @@ mise/config.toml              mise global config (uv, direnv)
 shell/mise.sh, mise.fish      PATH (mise bin + shims) and direnv hook
 templates/envrc, mise.toml    copied by bin/uv-init
 bin/uv-init                   scaffold a project
-zsh/.zshrc .zprofile .zshenv .p10k.zsh   zsh + oh-my-zsh + powerlevel10k (copied to $HOME)
+zsh/.zshrc .zprofile .zshenv .p10k.zsh   zsh + oh-my-zsh + powerlevel10k (symlinked into $HOME)
 zsh/.config/shell/vims.env               nvim NVIM_APPNAME aliases
 zsh/.config/shell/onedark-*.zsh          onedark colors for zsh-syntax-highlighting
 examples/bs-be18000.env.example          template for a machine-local secret
