@@ -79,7 +79,7 @@ leader, `Ctrl+A` then a key, so it never collides with shell or editor keys.
 | `Ctrl+A` then `\|` / `-` | split pane side by side / stacked |
 | `Ctrl+A` then `H` `J` `K` `L` | move between panes |
 | `Ctrl+A` then `Z` | zoom the current pane |
-| `Ctrl+A` then `Ctrl+A` | send a literal `Ctrl+A` to the shell |
+| `Ctrl+A` then `A` | send a literal `Ctrl+A` to the shell |
 | `Cmd+T` / `Alt+T` | new tab |
 | `Cmd+W` / `Alt+W` | close pane (asks first) |
 | `Cmd+[` `Cmd+]` / `Alt+[` `Alt+]` | previous / next tab |
@@ -95,9 +95,10 @@ bundles both, so nothing needs installing for the Powerlevel10k glyphs.
 The table above is a summary. `wezterm/keymap.lua` is a small plugin, loaded
 by `wezterm.lua`, that shows the real state from inside WezTerm:
 
-- **Leader hints.** Press `Ctrl+A` and the right side of the tab bar lists the
-  chords available next, read from the config. The same happens while a key
-  table is active.
+- **Leader popup.** `Ctrl+A` opens an overlay listing every leader key with
+  a short label (`h  pane ←`, `|  split │`, ...). Press the key and it runs;
+  `Esc` cancels, `/` filters. This replaces WezTerm's native leader, which has
+  no way to show hints, so the leader timeout no longer applies.
 - **Keymap menu** on `Ctrl+A` then `?`, fuzzy-searchable:
 
   | entry | what |
@@ -113,7 +114,8 @@ by `wezterm.lua`, that shows the real state from inside WezTerm:
   overlay" in the command palette).
 
 Options are passed to `keymap.apply_to_config(config, opts)`: `menu_key`
-(default `?` with `LEADER|SHIFT`), `leader_hints`, `warn_on_load`,
+(default `?` with `LEADER|SHIFT`), `popup`, `labels` (override a popup label
+by key, e.g. `{ ["|"] = "split side by side" }`), `warn_on_load`,
 `report_path`. Inside WezTerm, `Ctrl+Shift+P` opens the command palette, which
 also lists every action with its binding.
 

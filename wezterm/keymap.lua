@@ -1,8 +1,11 @@
 -- keymap.lua: a small WezTerm plugin for seeing and choosing key bindings.
 --
 -- What it adds (all opt-out via `opts`):
---   * Leader hints: while the leader is active (or a key table is), the right
---     side of the tab bar lists the chords that are available next.
+--   * Leader popup (which-key style): the leader chord opens an overlay that
+--     lists every LEADER binding with a short label; pressing the binding's
+--     key runs it at once. Esc cancels, / filters. config.leader is read for
+--     the chord and then unset, so the overlay replaces WezTerm's native
+--     leader (which has no way to show hints).
 --   * A keymap menu on <leader> ? with fuzzy-searchable lists:
 --       Bindings         every active chord, built-in and custom; Enter runs it
 --       Chord audit      free / taken chords per modifier; Enter copies a
@@ -20,9 +23,12 @@
 -- documented system defaults), so nothing here goes stale when wezterm.lua
 -- changes.
 --
--- Usage, in wezterm.lua:
+-- Usage, in wezterm.lua (after config.leader and config.keys are set):
 --   local keymap = require("keymap")
---   keymap.apply_to_config(config, { menu_key = { key = "?", mods = "LEADER|SHIFT" } })
+--   keymap.apply_to_config(config, {
+--     menu_key = { key = "?", mods = "LEADER|SHIFT" },
+--     labels = { ["|"] = "split side by side" }, -- override an auto label
+--   })
 --
 -- Laid out like a wezterm.plugin module (apply_to_config) so it could be moved
 -- to its own repo and loaded with wezterm.plugin.require later.
@@ -34,7 +40,8 @@ local M = {}
 
 local DEFAULTS = {
 	menu_key = { key = "?", mods = "LEADER|SHIFT" },
-	leader_hints = true, -- show available chords in the right status while LEADER is held
+	popup = true, -- replace the native leader with the which-key overlay
+	labels = {}, -- popup label overrides, keyed by the key as the popup shows it ("|", "CTRL+a")
 	warn_on_load = true, -- wezterm.log_warn for custom chords a desktop shortcut shadows
 	report_path = nil, -- defaults to $XDG_CACHE_HOME/wezterm/keymap.txt
 }
@@ -137,6 +144,9 @@ function M.describe(action, depth)
 	if name == nil then
 		return "{}"
 	end
+	if (name == "InputSelector" or name == "PromptInputLine") and type(arg) == "table" then
+		return name .. ' "' .. tostring(arg.title or arg.description or "") .. '"'
+	end
 	if name == "Multiple" and type(arg) == "table" then
 		local parts = {}
 		for _, a in ipairs(arg) do
@@ -149,6 +159,99 @@ function M.describe(action, depth)
 	end
 	local rest = compact(arg, depth)
 	return rest ~= "" and (name .. " " .. rest) or name
+end
+
+-- Short labels for the popup and menus. A string, or a function of the
+-- action's argument; anything missing falls back to M.describe.
+local ARROWS = { Left = "←", Right = "→", Up = "↑", Down = "↓" }
+local SHORT = {
+	ActivatePaneDirection = function(a)
+		return "pane " .. (ARROWS[a] or tostring(a))
+	end,
+	AdjustPaneSize = function(a)
+		return "resize " .. (ARROWS[a[1]] or tostring(a[1]))
+	end,
+	SplitHorizontal = "split │",
+	SplitVertical = "split ─",
+	SplitPane = function(a)
+		return "split " .. (ARROWS[a.direction] or tostring(a.direction))
+	end,
+	TogglePaneZoomState = "zoom pane",
+	PaneSelect = "pick pane",
+	RotatePanes = "rotate panes",
+	CloseCurrentPane = "close pane",
+	CloseCurrentTab = "close tab",
+	SpawnTab = "new tab",
+	SpawnWindow = "new window",
+	ActivateTab = function(a)
+		return a == -1 and "last tab" or ("tab " .. (a + 1))
+	end,
+	ActivateTabRelative = function(a)
+		return "tab " .. (a < 0 and "←" or "→")
+	end,
+	MoveTabRelative = function(a)
+		return "move tab " .. (a < 0 and "←" or "→")
+	end,
+	ShowTabNavigator = "tab list",
+	ShowLauncher = "launcher",
+	ShowLauncherArgs = "launcher",
+	ActivateKeyTable = function(a)
+		return "mode " .. tostring(a.name)
+	end,
+	SendKey = function(a)
+		return "send " .. chord(norm(a.key, a.mods))
+	end,
+	SendString = function(a)
+		return "send " .. tostring(a)
+	end,
+	EmitEvent = function(a)
+		return (tostring(a):gsub("[-_]", " "))
+	end,
+	InputSelector = function(a)
+		return tostring(a.title or "menu")
+	end,
+	PromptInputLine = function(a)
+		return tostring(a.description or "prompt")
+	end,
+	Multiple = function(a)
+		return M.short(a[1]) .. " …"
+	end,
+	CopyTo = "copy",
+	PasteFrom = "paste",
+	ActivateCopyMode = "copy mode",
+	QuickSelect = "quick select",
+	Search = "search",
+	CharSelect = "char picker",
+	ClearScrollback = "clear scrollback",
+	ScrollToTop = "scroll top",
+	ScrollToBottom = "scroll bottom",
+	IncreaseFontSize = "font +",
+	DecreaseFontSize = "font -",
+	ResetFontSize = "font reset",
+	ToggleFullScreen = "fullscreen",
+	Hide = "hide window",
+	ActivateCommandPalette = "command palette",
+	ReloadConfiguration = "reload config",
+	ShowDebugOverlay = "debug overlay",
+	Nop = "nothing",
+}
+
+--- Short label for a KeyAssignment, e.g. "pane ←", "split │", "new tab".
+function M.short(action)
+	local name, arg = action, nil
+	if type(action) == "table" then
+		name, arg = next(action)
+	end
+	local s = SHORT[name]
+	if type(s) == "string" then
+		return s
+	elseif type(s) == "function" then
+		local ok, label = pcall(s, arg)
+		if ok and label then
+			return label
+		end
+	end
+	return M.describe(action)
 end
 
 ---------------------------------------------------------------------------
@@ -457,8 +560,22 @@ function M.report(config)
 	line("WezTerm keymap report")
 	line(string.rep("=", 21))
 	line()
-	local leader = config.leader
-	line("leader: " .. (leader and chord(norm(leader.key, leader.mods)) .. " (" .. tostring(leader.timeout_milliseconds or 1000) .. "ms)" or "none"))
+	if M.leader_chord then
+		line("leader: " .. M.leader_chord .. " opens the leader popup; press a key below to run it")
+	elseif config.leader then
+		line("leader: " .. chord(norm(config.leader.key, config.leader.mods)) .. " (" .. tostring(config.leader.timeout_milliseconds or 1000) .. "ms)")
+	else
+		line("leader: none")
+	end
+	if M.leader_entries then
+		line()
+		line("Leader popup")
+		line(string.rep("-", 12))
+		for _, e in ipairs(M.leader_entries) do
+			line("  " .. pad(e.display, 10) .. pad(e.label, 24) .. M.describe(e.action))
+		end
+	end
+	line()
 	line("[cfg] set in wezterm.lua   [cfg overrides default]   [SYS] shadowed by a " .. label .. " shortcut")
 	line()
 	line("Bindings (default key table)")
@@ -594,7 +711,7 @@ local function bindings_selector(window)
 		if sys then
 			tag = tag .. " [SYS: " .. sys.desc .. "]"
 		end
-		choices[#choices + 1] = { id = tostring(i), label = pad(b.chord, 22) .. " " .. pad(b.desc, 52) .. " " .. tag }
+		choices[#choices + 1] = { id = tostring(i), label = pad(b.chord, 22) .. " " .. pad(M.short(b.action), 18) .. " " .. pad(b.desc, 44) .. " " .. tag }
 	end
 	return selector("Bindings", choices, function(w, p, id)
 		local b = list[tonumber(id)]
@@ -704,49 +821,103 @@ function M.menu_action(opts)
 end
 
 ---------------------------------------------------------------------------
--- Leader hints in the right status.
+-- Leader popup: an InputSelector whose quick-select alphabet is the set of
+-- leader keys, so <leader> h runs the h binding without pressing Enter.
 ---------------------------------------------------------------------------
 
-local function hint_text(window, entries, title)
-	local parts = { { Attribute = { Intensity = "Bold" } }, { Text = title .. " " } }
-	table.sort(entries, function(a, b)
-		return a.key < b.key
-	end)
-	for _, e in ipairs(entries) do
-		parts[#parts + 1] = { Attribute = { Intensity = "Bold" } }
-		parts[#parts + 1] = { Text = e.key }
-		parts[#parts + 1] = { Attribute = { Intensity = "Half" } }
-		parts[#parts + 1] = { Text = " " .. e.desc .. "  " }
-	end
-	parts[#parts + 1] = "ResetAttributes"
-	window:set_right_status(wezterm.format(parts))
-end
-
-local function install_hints()
-	wezterm.on("update-status", function(window, _)
-		local config = window:effective_config()
-		local table_name = window:active_key_table()
-		if table_name and config.key_tables and config.key_tables[table_name] then
-			local entries = {}
-			for _, e in ipairs(config.key_tables[table_name]) do
-				local key, mods = norm(e.key, e.mods)
-				entries[#entries + 1] = { key = chord(key, mods), desc = M.describe(e.action) }
+local function leader_popup(config, opts)
+	local entries = {}
+	for _, e in ipairs(config.keys or {}) do
+		local key, mods = norm(e.key, e.mods)
+		if mods:find("LEADER", 1, true) then
+			local extra = mods:gsub("LEADER|?", ""):gsub("|$", "")
+			if #key == 1 and not key:match("%w") then
+				extra = extra:gsub("SHIFT|?", ""):gsub("|$", "") -- "|" already implies SHIFT
 			end
-			hint_text(window, entries, table_name .. ":")
-		elseif window:leader_is_active() then
-			local entries = {}
-			for _, e in ipairs(config.keys or {}) do
-				local key, mods = norm(e.key, e.mods)
-				if mods:find("LEADER", 1, true) then
-					local extra = mods:gsub("LEADER|?", ""):gsub("|$", "")
-					entries[#entries + 1] = { key = extra ~= "" and (extra .. "+" .. key) or key, desc = M.describe(e.action) }
-				end
-			end
-			hint_text(window, entries, "LEADER")
-		else
-			window:set_right_status("")
+			local display = extra ~= "" and (extra .. "+" .. key) or key
+			entries[#entries + 1] = {
+				key = key,
+				extra = extra,
+				display = display,
+				action = e.action,
+				label = opts.labels[display] or M.short(e.action),
+			}
 		end
+	end
+	-- Letters and digits first, then punctuation, named keys, and ? last.
+	local function rank(e)
+		if e.key == "?" then
+			return 4
+		elseif #e.key > 1 then
+			return 3
+		elseif e.key:match("%w") then
+			return 1
+		end
+		return 2
+	end
+	table.sort(entries, function(a, b)
+		local ra, rb = rank(a), rank(b)
+		if ra ~= rb then
+			return ra < rb
+		end
+		if (a.extra == "") ~= (b.extra == "") then
+			return a.extra == "" -- bare keys before CTRL+x style ones
+		end
+		if a.key ~= b.key then
+			return a.key < b.key
+		end
+		return a.extra < b.extra
 	end)
+
+	-- Quick keys: the bare key for single-character keys, first come first
+	-- served; the rest get an unused digit so every entry stays one keypress.
+	local ordered, alphabet, used, rest = {}, {}, {}, {}
+	for _, e in ipairs(entries) do
+		local c = (#e.key == 1) and e.key or nil
+		if c and not used[c] then
+			used[c] = true
+			ordered[#ordered + 1] = e
+			alphabet[#alphabet + 1] = c
+		else
+			rest[#rest + 1] = e
+		end
+	end
+	local spare = {}
+	for d in ("1234567890"):gmatch(".") do
+		if not used[d] then
+			spare[#spare + 1] = d
+		end
+	end
+	for _, e in ipairs(rest) do
+		local d = table.remove(spare, 1)
+		if d then
+			used[d] = true
+			alphabet[#alphabet + 1] = d
+			ordered[#ordered + 1] = e
+			wezterm.log_warn("keymap: leader popup: " .. e.display .. " has no free quick key; press " .. d .. " for it")
+		else
+			wezterm.log_warn("keymap: leader popup: " .. e.display .. " left out; too many entries for one-key selection")
+		end
+	end
+
+	local choices = {}
+	for i, e in ipairs(ordered) do
+		choices[i] = { id = tostring(i), label = pad(e.display, 8) .. e.label }
+	end
+	M.leader_entries = ordered
+	return act.InputSelector({
+		title = "Leader",
+		choices = choices,
+		alphabet = table.concat(alphabet),
+		description = "press a key · Esc cancels · / filters",
+		fuzzy_description = "Leader: ",
+		action = wezterm.action_callback(function(window, pane, id)
+			local e = ordered[tonumber(id or "")]
+			if e then
+				window:perform_action(e.action, pane)
+			end
+		end),
+	})
 end
 
 ---------------------------------------------------------------------------
@@ -761,13 +932,11 @@ function M.apply_to_config(config, opts)
 		config.keys[#config.keys + 1] = { key = opts.menu_key.key, mods = opts.menu_key.mods, action = M.menu_action(opts) }
 	end
 
-	if opts.leader_hints then
-		install_hints()
-		-- The status is redrawn on this interval; the leader is live for ~1s,
-		-- so a shorter interval makes the hints appear while it still matters.
-		if config.status_update_interval == nil then
-			config.status_update_interval = 250
-		end
+	if opts.popup and config.leader then
+		local leader = config.leader
+		config.keys[#config.keys + 1] = { key = leader.key, mods = leader.mods, action = leader_popup(config, opts) }
+		M.leader_chord = chord(norm(leader.key, leader.mods))
+		config.leader = nil -- the overlay owns the chord now; LEADER entries stay as its source
 	end
 
 	if opts.warn_on_load then
