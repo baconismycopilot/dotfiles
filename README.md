@@ -53,10 +53,8 @@ differing file it would replace is backed up to `*.bak`.
 - **Per-host overrides:** `~/.zshrc` sources `~/.zshrc.local` (git-ignored) if
   present. Put machine-specific PATH entries and aliases there, e.g.
   `alias superbacon='ssh user@192.168.x.x'`.
-- **Secrets:** nothing secret is tracked. `~/.local/user-secrets/bs-be18000.env`
-  is scaffolded from `examples/bs-be18000.env.example`; fill in real values. It
-  is loaded only when running `bs-be18000` (a wrapper function in `~/.zshrc`),
-  not exported to every process.
+- **Secrets:** nothing secret is tracked. Anything credential-like belongs in
+  `~/.zshrc.local` or outside the repo entirely.
 - **direnv** is hooked once, by `shell/mise.sh` (the oh-my-zsh direnv plugin is
   intentionally omitted), so the mise + direnv + uv workflow above works
   unchanged under zsh. `~/.zshrc` runs `direnv export` before the p10k instant
@@ -180,7 +178,6 @@ bin/uv-init                   scaffold a project
 zsh/.zshrc .zprofile .zshenv .p10k.zsh   zsh + oh-my-zsh + powerlevel10k (symlinked into $HOME)
 zsh/.config/shell/vims.env               nvim NVIM_APPNAME aliases
 zsh/.config/shell/onedark-*.zsh          onedark colors for zsh-syntax-highlighting
-examples/bs-be18000.env.example          template for a machine-local secret
 wezterm/wezterm.lua           WezTerm config (symlinked to $XDG_CONFIG_HOME/wezterm/)
 wezterm/keymap.lua            keymap plugin: leader hints, bindings/free-chord/OS-shortcut menu
 install.sh                    bootstrap

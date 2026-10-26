@@ -155,13 +155,6 @@ if command -v zsh >/dev/null 2>&1; then
     # means `p10k configure` and any edit land in the repo where git shows them.
     say "linking zsh dotfiles into \$HOME (differing files backed up to *.bak)"
     link_tree "$REPO/zsh" "$HOME"
-
-    # Machine-local secret scaffold — never tracked by git.
-    mkdir -p "$HOME/.local/user-secrets"
-    if [ ! -e "$HOME/.local/user-secrets/bs-be18000.env" ]; then
-        cp "$REPO/examples/bs-be18000.env.example" "$HOME/.local/user-secrets/bs-be18000.env"
-        say "created ~/.local/user-secrets/bs-be18000.env from example (fill it in)"
-    fi
 else
     warn "zsh not found; skipping zsh config"
 fi
