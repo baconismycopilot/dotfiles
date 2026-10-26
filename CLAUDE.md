@@ -14,8 +14,8 @@ The repo is **public**. Treat every file and every commit as world-readable.
 ## Hard rules
 
 1. **Never commit secrets.** No tokens, passwords, private keys, internal IPs
-   or hostnames. Real credentials live in `~/.local/user-secrets/` (git-ignored)
-   and are scaffolded from `examples/*.example` with empty values only.
+   or hostnames. The repo carries no credential scaffolding at all; anything
+   credential-like stays outside the repo.
 2. **Scan for secrets before every push.** Run `gitleaks git` (full history)
    and `gitleaks dir` (working tree) and confirm both report no leaks. If either
    finds something, stop: remove it, rewrite history if it was committed, and

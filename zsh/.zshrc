@@ -124,15 +124,6 @@ fi
 [[ -r $_cachyos_zsh || ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 unset _cachyos_zsh
 
-# Load bs-be18000 credentials only for that command, in a subshell, so they are
-# not exported to every process started from this shell.
-bs-be18000() {
-  (
-    [ -r "$HOME/.local/user-secrets/bs-be18000.env" ] && source "$HOME/.local/user-secrets/bs-be18000.env"
-    command bs-be18000 "$@"
-  )
-}
-
 [ -r "$HOME/.config/shell/vims.env" ] && source "$HOME/.config/shell/vims.env"
 
 set -o vi

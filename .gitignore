@@ -5,6 +5,3 @@ __pycache__/
 .DS_Store
 .claude/*
 !.claude/settings.json
-
-# Never commit real secrets — only examples/*.example are tracked.
-**/user-secrets/
