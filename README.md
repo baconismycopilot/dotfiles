@@ -94,22 +94,25 @@ bundles both, so nothing needs installing for the Powerlevel10k glyphs.
 The table above is a summary. `wezterm/keymap.lua` is a small plugin, loaded
 by `wezterm.lua`, that shows the real state from inside WezTerm:
 
-- **Leader popup.** `Ctrl+A` opens an overlay listing every leader key with
-  a short label (`h  pane ←`, `|  split │`, ...). Press the key and it runs;
-  `Esc` cancels, `/` filters. The overlay only sees unshifted keys, so a
-  shifted leader key is reached through its unshifted twin (`|` via `\`) or a
-  spare digit (`?` via `1`); the row says which. This replaces WezTerm's native
-  leader, which has no way to show hints, so the leader timeout no longer
-  applies.
-- **Keymap menu** on `Ctrl+A` then `?`, fuzzy-searchable:
+- **Leader hints.** Press `Ctrl+A` and, for the two seconds the leader is
+  pending, the right side of the tab bar lists every leader key with a short
+  label (`h pane ← · | split │ · z zoom pane · ? Keymap`) and the cursor turns
+  orange. The leader itself is WezTerm's own, so `|`, `-` and `Ctrl+A` work as
+  typed; any other key ends it. When idle the bar shows a dim `CTRL+a keys`
+  reminder. The tab bar is therefore always visible and sits at the bottom.
+- **Keymap menu** on `Ctrl+A` then `?`. Each page has a breadcrumb title
+  (`Keymap › Bindings › CTRL`); `Esc` goes back one page and closes only from
+  the top. Menu pages take one keypress (the key is printed in front of each
+  row, `/` filters); the leaf lists are fuzzy-searchable.
 
-  | entry | what |
-  | --- | --- |
-  | Bindings | pick a modifier set (row shows the count and class mix), then every chord in it. Enter runs it |
-  | Chord audit | pick a modifier set, then every key marked free / wezterm / OS / shell. Enter copies a `{ key = ..., mods = ..., action = ... }` line |
-  | System shortcuts | KDE Plasma globals from `~/.config/kglobalshortcutsrc`, or Apple's macOS defaults, plus the `Ctrl`/`Alt` chords the shell uses |
-  | Actions | `KeyAssignment` reference; Enter opens the docs page |
-  | Full report | all of the above as text in a new tab |
+  | key | page | what |
+  | --- | --- | --- |
+  | `l` | Leader keys | every leader binding with its label and action. Enter runs it |
+  | `b` | Bindings | pick a modifier set (row shows the count and class mix), then every chord in it. Enter runs it |
+  | `f` | Free chords | pick a modifier set, then every key marked free / wezterm / OS / shell. Enter copies a `{ key = ..., mods = ..., action = ... }` line |
+  | `o` | OS & shell shortcuts | KDE Plasma globals from `~/.config/kglobalshortcutsrc`, or Apple's macOS defaults, plus the `Ctrl`/`Alt` chords the shell uses |
+  | `a` | Actions | `KeyAssignment` reference; Enter opens the docs page |
+  | `r` | Full report | all of the above as text in a new tab |
 
   Rows are coloured by class: blue built-in WezTerm binding, green yours (or a
   free chord), yellow a custom binding that replaced a default, red the OS
@@ -120,8 +123,8 @@ by `wezterm.lua`, that shows the real state from inside WezTerm:
   overlay" in the command palette).
 
 Options are passed to `keymap.apply_to_config(config, opts)`: `menu_key`
-(default `?` with `LEADER|SHIFT`), `popup`, `labels` (override a popup label
-by key, e.g. `{ ["|"] = "split side by side" }`), `warn_on_load`,
+(default `?` with `LEADER|SHIFT`), `hints`, `idle_hint`, `labels` (override a
+hint label by key, e.g. `{ ["|"] = "split side by side" }`), `warn_on_load`,
 `report_path`. Inside WezTerm, `Ctrl+Shift+P` opens the command palette, which
 also lists every action with its binding.
 
