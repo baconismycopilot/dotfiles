@@ -33,6 +33,7 @@ exec $SHELL
 | `shell/mise.sh` | linked to `$XDG_CONFIG_HOME/shell/mise.sh` and sourced by the repo `~/.zshrc`; hooked into `~/.bashrc`; `shell/mise.fish` linked into fish `conf.d/` |
 | gitleaks | installed if missing; `core.hooksPath` set to `.githooks` so the pre-push secrets scan runs |
 | `wezterm/*.lua` | symlinked into `$XDG_CONFIG_HOME/wezterm/` |
+| `kitty/*.conf` | symlinked into `$XDG_CONFIG_HOME/kitty/`; Hack Nerd Font installed if `kitty` is present and the font is missing |
 
 Supported: macOS, Linux, WSL with bash, zsh or fish. Native Windows has no
 direnv shell hook; use WSL.
@@ -124,6 +125,63 @@ by key, e.g. `{ ["|"] = "split side by side" }`), `warn_on_load`,
 `report_path`. Inside WezTerm, `Ctrl+Shift+P` opens the command palette, which
 also lists every action with its binding.
 
+## Terminal (kitty)
+
+`kitty/` is the same setup for [kitty](https://sw.kovidgoyal.net/kitty/), split
+into one file per section of the
+[kitty.conf reference](https://sw.kovidgoyal.net/kitty/conf/). `kitty.conf`
+holds nothing but `include` lines; `install.sh` symlinks every file into
+`$XDG_CONFIG_HOME/kitty/` and kitty reloads on save. Relative includes resolve
+next to the symlink, so a git-ignored `~/.config/kitty/local.conf` is the
+per-host file (`globinclude`, so a missing file is silent). The OS split is
+kitty's own `${KITTY_OS}` variable: `macos.conf` or `linux.conf` is included
+last and may override anything (Linux sets a smaller `font_size`).
+
+| file | section | what changes from the defaults |
+| --- | --- | --- |
+| `fonts.conf` | Fonts | Hack Nerd Font Mono, 13 pt (kitty bundles no fonts) |
+| `cursor.conf` | Text cursor | defaults, stated |
+| `scrollback.conf` | Scrollback | 20000 lines, 10 MB pager history |
+| `mouse.conf` | Mouse | strip trailing spaces on copy |
+| `bell.conf` | Terminal bell | flash instead of beep |
+| `window.conf` | Window layout | `splits` layout first, padding, close confirmation |
+| `tabs.conf` | Tab bar | bottom, always shown, powerline style |
+| `colors.conf` | Color scheme | One Dark from `kitten themes --dump-theme`, dynamic opacity on |
+| `advanced.conf` | Advanced | shell integration on, remote control off, update check off, notify when a long command finishes |
+| `keybindings.conf` | Keyboard shortcuts | leader sequences below, on top of every kitty default |
+| `keybindings-macos.conf`, `keybindings-linux.conf` | Keyboard shortcuts | the `Cmd` / `Alt` chords below |
+| `macos.conf`, `linux.conf` | OS specific tweaks | left Option as Alt; Linux font size |
+
+The bindings mirror the WezTerm table. A kitty "window" is a WezTerm pane.
+
+| key (macOS / Linux) | action |
+| --- | --- |
+| `Cmd+D` / `Alt+D`, with `Shift` | split window side by side / stacked |
+| `Ctrl+A` then `\|` / `-` | split window side by side / stacked |
+| `Ctrl+A` then `H` `J` `K` `L` | move between windows |
+| `Ctrl+A` then `Z` | zoom (toggle the `stack` layout) |
+| `Ctrl+A` then `Ctrl+A` | send a literal `Ctrl+A` to the shell |
+| `Ctrl+A` then `?` | command palette (every action with its binding) |
+| `Cmd+T` / `Alt+T` | new tab |
+| `Cmd+W` / `Alt+W` | close window (asks first) |
+| `Cmd+[` `Cmd+]` / `Alt+[` `Alt+]` | previous / next tab |
+| `Cmd+Return` / `Alt+Return` | toggle fullscreen |
+| `Cmd+K` / `Alt+K` | clear scrollback and screen |
+| `Cmd+U` / `Alt+U`, with `Shift` | 90% window opacity / back to default |
+| `Ctrl+Shift+Alt+L`, with `Shift` | ligatures off / on in this window |
+| `Ctrl+Backspace` | delete previous word (sends `Ctrl+W`) |
+
+Three macOS defaults are replaced: `Cmd+W` (was close tab), `Cmd+Return` (was
+new window) and `Cmd+K` (was clear to cursor). Everything else kitty binds by
+default still works, in particular `Ctrl+Shift+F5` reload, `Ctrl+Shift+F6`
+effective config, `Ctrl+Shift+F3` command palette, `Ctrl+Shift+E` open a URL
+by hint, `Ctrl+Shift+H` scrollback in a pager and `Ctrl+Shift+G` the last
+command's output. Differences from WezTerm: kitty has no toggle actions, so
+opacity and ligatures are pairs, and there is no keymap plugin; the command
+palette is the equivalent. `kitten themes --config-file-name colors.conf` and
+`kitten choose-fonts --config-file-name fonts.conf` change theme and font and
+write into the component file instead of `kitty.conf`.
+
 ## Repo management
 
 `main` is protected by a GitHub ruleset: pull request required, linear history,
@@ -180,6 +238,8 @@ zsh/.config/shell/vims.env               nvim NVIM_APPNAME aliases
 zsh/.config/shell/onedark-*.zsh          onedark colors for zsh-syntax-highlighting
 wezterm/wezterm.lua           WezTerm config (symlinked to $XDG_CONFIG_HOME/wezterm/)
 wezterm/keymap.lua            keymap plugin: leader hints, bindings/free-chord/OS-shortcut menu
+kitty/kitty.conf              kitty entry point, includes only (symlinked to $XDG_CONFIG_HOME/kitty/)
+kitty/*.conf                  one file per kitty.conf section; keybindings-<os>.conf, <os>.conf per OS
 install.sh                    bootstrap
 ```
 

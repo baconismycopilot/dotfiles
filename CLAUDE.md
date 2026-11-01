@@ -5,9 +5,10 @@ Guidance for Claude Code when working in this repo. Keep this file under 200 lin
 ## What this repo is
 
 Personal dotfiles for a mise + direnv + uv Python workflow, an interactive zsh
-setup (oh-my-zsh + Powerlevel10k) and a WezTerm config. `install.sh` symlinks
-the mise/direnv/wezterm config and **copies** `zsh/` into `$HOME`. See
-`README.md` for the layout.
+setup (oh-my-zsh + Powerlevel10k), a WezTerm config and a kitty config split
+into one file per kitty.conf section. `install.sh` symlinks the
+mise/direnv/wezterm/kitty config and `zsh/` into `$HOME`. See `README.md` for
+the layout.
 
 The repo is **public**. Treat every file and every commit as world-readable.
 
@@ -69,7 +70,12 @@ approvals are 0 because a solo owner cannot approve their own PR.
 
 - Shell scripts: `bash` with `set -euo pipefail`; check with `bash -n`. The zsh
   files are checked with `zsh -n`, the Lua files with `luac -p` and
-  `wezterm --config-file wezterm/wezterm.lua show-keys`.
+  `wezterm --config-file wezterm/wezterm.lua show-keys`. The kitty files are
+  parsed headlessly with
+  `kitty +runpy 'from kitty.config import load_config; load_config("kitty/kitty.conf")'`;
+  any `Ignoring invalid config line` or `Could not find included config file`
+  output is a failure. Every kitty option must come from the kitty.conf
+  reference, with its documented default in the comment above it.
 - `install.sh` must stay idempotent and back up anything it replaces.
 - Commit messages: short imperative subject, body explains why.
 - Do not add tools to `install.sh` unless a tracked file actually uses them.

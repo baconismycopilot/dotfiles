@@ -17,6 +17,8 @@
 #      hook it into ~/.bashrc, link shell/mise.fish into fish conf.d
 #   6. gitleaks (if missing) + core.hooksPath=.githooks for the pre-push secrets scan
 #   7. symlink wezterm/*.lua          -> $XDG_CONFIG_HOME/wezterm/
+#   8. symlink kitty/*.conf           -> $XDG_CONFIG_HOME/kitty/ (+ Hack Nerd Font if kitty
+#      is installed and the font is missing)
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -180,5 +182,24 @@ git -C "$REPO" config core.hooksPath .githooks
 for f in "$REPO"/wezterm/*.lua; do
     link "$f" "$XDG_CONFIG_HOME/wezterm/$(basename "$f")"
 done
+
+# 8. kitty config. One file per kitty.conf section; kitty.conf includes the
+# others by relative path, which kitty resolves next to the symlink, so a
+# git-ignored ~/.config/kitty/local.conf holds per-host overrides. The sample
+# kitty.conf kitty writes on first run differs, so link() backs it up.
+for f in "$REPO"/kitty/*.conf; do
+    link "$f" "$XDG_CONFIG_HOME/kitty/$(basename "$f")"
+done
+# kitty/fonts.conf uses Hack Nerd Font Mono and kitty bundles no fonts.
+if command -v kitty >/dev/null 2>&1 \
+    && ! find "$HOME/Library/Fonts" /Library/Fonts "${XDG_DATA_HOME:-$HOME/.local/share}/fonts" \
+            /usr/share/fonts /usr/local/share/fonts \
+            -name 'HackNerdFontMono-Regular*' -print -quit 2>/dev/null | grep -q .; then
+    say "installing Hack Nerd Font"
+    case "$OS" in
+        Darwin) pkg_install --cask font-hack-nerd-font ;;
+        *)      pkg_install ttf-hack-nerd ;;
+    esac || warn "Hack Nerd Font failed to install; set font_family in ~/.config/kitty/local.conf"
+fi
 
 say "done. Open a new shell, then: $REPO/bin/uv-init ~/code/myproject"
