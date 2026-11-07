@@ -7,3 +7,4 @@ __pycache__/
 !.claude/settings.json
 kitty/local.conf
 kitty/current-theme.conf
+kitty/*-theme.auto.conf

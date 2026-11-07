@@ -146,7 +146,7 @@ last and may override anything (Linux sets a smaller `font_size`).
 | `bell.conf` | Terminal bell | flash instead of beep |
 | `window.conf` | Window layout | `splits` layout first, padding, close confirmation |
 | `tabs.conf` | Tab bar | bottom, always shown, powerline style |
-| `colors.conf` | Color scheme | One Dark from `kitten themes --dump-theme`, dynamic opacity on |
+| `colors.conf` | Color scheme | Dark Pastel from `kitten themes --dump-theme`, the default every host starts from; dynamic opacity on |
 | `advanced.conf` | Advanced | shell integration on, remote control off, update check off, notify when a long command finishes |
 | `keybindings.conf` | Keyboard shortcuts | leader sequences below, on top of every kitty default |
 | `keybindings-macos.conf`, `keybindings-linux.conf` | Keyboard shortcuts | the `Cmd` / `Alt` chords below |
@@ -162,6 +162,7 @@ The bindings mirror the WezTerm table. A kitty "window" is a WezTerm pane.
 | `Ctrl+A` then `Z` | zoom (toggle the `stack` layout) |
 | `Ctrl+A` then `Ctrl+A` | send a literal `Ctrl+A` to the shell |
 | `Ctrl+A` then `?` | command palette (every action with its binding) |
+| `Ctrl+A` then `C` | theme picker (see below) |
 | `Cmd+T` / `Alt+T` | new tab |
 | `Cmd+W` / `Alt+W` | close window (asks first) |
 | `Cmd+[` `Cmd+]` / `Alt+[` `Alt+]` | previous / next tab |
@@ -178,9 +179,30 @@ effective config, `Ctrl+Shift+F3` command palette, `Ctrl+Shift+E` open a URL
 by hint, `Ctrl+Shift+H` scrollback in a pager and `Ctrl+Shift+G` the last
 command's output. Differences from WezTerm: kitty has no toggle actions, so
 opacity and ligatures are pairs, and there is no keymap plugin; the command
-palette is the equivalent. `kitten themes --config-file-name colors.conf` and
-`kitten choose-fonts --config-file-name fonts.conf` change theme and font and
-write into the component file instead of `kitty.conf`.
+palette is the equivalent. `kitten choose-fonts --config-file-name fonts.conf`
+changes the font and writes into `fonts.conf` instead of `kitty.conf`.
+
+### Themes
+
+`colors.conf` is the tracked default. A different theme on one host is a
+per-host override, not an edit to the repo:
+
+```sh
+kitten themes --config-file-name local.conf    # or Ctrl+A then C inside kitty
+```
+
+kitty ships the picker with a few hundred themes and live preview. On
+selection it copies the theme to `~/.config/kitty/current-theme.conf` and adds
+an `include current-theme.conf` block to `~/.config/kitty/local.conf`. Both
+files are git-ignored, and `local.conf` is included last, so the pick wins
+over `colors.conf` while the tracked files stay clean. `install.sh` creates an
+empty `local.conf`; without one the kitten would create it from the full
+sample `kitty.conf`. On the picker's final screen "save as dark / light /
+no-preference" writes `dark-theme.auto.conf` and friends instead, and kitty
+then follows the desktop's light/dark setting (Plasma, GNOME, macOS). Those
+files are git-ignored too. To change the default for every host, replace the
+colour lines in `colors.conf` with the output of
+`kitten themes --dump-theme "<name>"` and keep its opacity lines.
 
 ## Repo management
 
