@@ -126,6 +126,9 @@ unset _cachyos_zsh
 
 [ -r "$HOME/.config/shell/vims.env" ] && source "$HOME/.config/shell/vims.env"
 
+# Shared aliases, tracked; host-specific ones go in ~/.zshrc.local below.
+[ -r "$HOME/.config/shell/aliases.zsh" ] && source "$HOME/.config/shell/aliases.zsh"
+
 set -o vi
 
 # LM Studio CLI (lms) — only if installed (macOS).
