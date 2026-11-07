@@ -17,8 +17,8 @@
 #      hook it into ~/.bashrc, link shell/mise.fish into fish conf.d
 #   6. gitleaks (if missing) + core.hooksPath=.githooks for the pre-push secrets scan
 #   7. symlink wezterm/*.lua          -> $XDG_CONFIG_HOME/wezterm/
-#   8. symlink kitty/*.conf           -> $XDG_CONFIG_HOME/kitty/ (+ Hack Nerd Font if kitty
-#      is installed and the font is missing)
+#   8. symlink kitty/*.conf           -> $XDG_CONFIG_HOME/kitty/, create an empty
+#      local.conf there (+ Hack Nerd Font if kitty is installed and the font is missing)
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -190,6 +190,14 @@ done
 for f in "$REPO"/kitty/*.conf; do
     link "$f" "$XDG_CONFIG_HOME/kitty/$(basename "$f")"
 done
+# local.conf must exist before `kitten themes --config-file-name local.conf`
+# runs: given a missing target the kitten creates it from the full sample
+# kitty.conf, 138 KB of commented-out defaults, instead of an empty file.
+if [ ! -e "$XDG_CONFIG_HOME/kitty/local.conf" ]; then
+    printf '%s\n' '# Per-host kitty overrides, git-ignored. kitten themes writes the theme pick here.' \
+        > "$XDG_CONFIG_HOME/kitty/local.conf"
+    say "created $XDG_CONFIG_HOME/kitty/local.conf"
+fi
 # kitty/fonts.conf uses Hack Nerd Font Mono and kitty bundles no fonts.
 if command -v kitty >/dev/null 2>&1 \
     && ! find "$HOME/Library/Fonts" /Library/Fonts "${XDG_DATA_HOME:-$HOME/.local/share}/fonts" \
