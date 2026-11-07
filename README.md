@@ -53,7 +53,8 @@ differing file it would replace is backed up to `*.bak`.
   skips the oh-my-zsh install and git clones.
 - **Per-host overrides:** `~/.zshrc` sources `~/.zshrc.local` (git-ignored) if
   present. Put machine-specific PATH entries and aliases there, e.g.
-  `alias superbacon='ssh user@192.168.x.x'`.
+  `alias superbacon='ssh user@192.168.x.x'`. Aliases meant for every host go
+  in `zsh/.config/shell/aliases.zsh`, sourced just before it.
 - **Secrets:** nothing secret is tracked. Anything credential-like belongs in
   `~/.zshrc.local` or outside the repo entirely.
 - **direnv** is hooked once, by `shell/mise.sh` (the oh-my-zsh direnv plugin is
@@ -256,6 +257,7 @@ shell/mise.sh, mise.fish      PATH (mise bin + shims) and direnv hook
 templates/envrc, mise.toml    copied by bin/uv-init
 bin/uv-init                   scaffold a project
 zsh/.zshrc .zprofile .zshenv .p10k.zsh   zsh + oh-my-zsh + powerlevel10k (symlinked into $HOME)
+zsh/.config/shell/aliases.zsh            shared aliases (host-specific ones go in ~/.zshrc.local)
 zsh/.config/shell/vims.env               nvim NVIM_APPNAME aliases
 zsh/.config/shell/onedark-*.zsh          onedark colors for zsh-syntax-highlighting
 wezterm/wezterm.lua           WezTerm config (symlinked to $XDG_CONFIG_HOME/wezterm/)
