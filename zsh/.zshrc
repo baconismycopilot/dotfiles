@@ -38,6 +38,12 @@ path=(
 [ -r "$HOME/.config/shell/mise.sh" ] && source "$HOME/.config/shell/mise.sh"
 (( ${+commands[direnv]} )) && emulate zsh -c "$(direnv export zsh)"
 
+# Arch/CachyOS: print the reasons when a reboot is pending, nothing otherwise
+# (zsh/.local/bin/reboot-required, on PATH via ~/.local/bin above). Runs here,
+# before the p10k instant prompt, for the same reason as direnv: output after
+# that point triggers p10k's console-output warning. Other OSes skip it.
+[[ -r /var/log/pacman.log ]] && reboot-required 2>/dev/null
+
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]
 # confirmations, etc.) must go above this block; everything else may go below.
@@ -133,10 +139,6 @@ set -o vi
 
 # LM Studio CLI (lms) — only if installed (macOS).
 [[ -d "$HOME/.lmstudio/bin" ]] && export PATH="$PATH:$HOME/.lmstudio/bin"
-
-# Arch/CachyOS: print the reasons when a reboot is pending, nothing otherwise
-# (zsh/.local/bin/reboot-required). Guarded on pacman.log so other OSes skip it.
-[[ -r /var/log/pacman.log ]] && reboot-required 2>/dev/null
 
 # Per-host overrides — NOT tracked in the dotfiles repo. Put machine-specific
 # PATH entries, aliases (e.g. ssh shortcuts), and tweaks here. Example:
