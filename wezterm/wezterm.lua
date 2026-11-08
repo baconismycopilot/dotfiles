@@ -3,10 +3,10 @@
 --
 -- Window-level chords use SUPER on macOS and ALT elsewhere, with the same keys
 -- on both. Pane management goes through a tmux-style leader (CTRL+a, then a
--- key) so it never collides with shell or editor bindings. keymap.lua turns
--- the leader into a popup: CTRL+a lists the leader keys with labels, pressing
--- one runs it, Esc cancels. Leader then ? opens the keymap menu (bindings,
--- free chords, OS-reserved shortcuts, action reference).
+-- key) so it never collides with shell or editor bindings. keymap.lua lists
+-- the leader keys with labels in the status bar while the leader is pending,
+-- and leader then ? opens the keymap menu (leader keys, bindings, free chords,
+-- OS-reserved shortcuts, action reference).
 --
 -- Docs: https://wezterm.org/config/lua/config/
 -- `wezterm show-keys` is the raw binding dump.
@@ -46,7 +46,11 @@ config.font = wezterm.font_with_fallback({
 config.font_size = is_mac and 13.0 or 10.5 -- macOS renders the same pt size smaller
 config.use_cap_height_to_scale_fallback_fonts = true
 
-config.hide_tab_bar_if_only_one_tab = true
+-- The tab bar doubles as the status bar: keymap.lua shows the leader keys on
+-- its right side while the leader is pending, so it stays visible and sits at
+-- the bottom where a hint line is expected.
+config.hide_tab_bar_if_only_one_tab = false
+config.tab_bar_at_bottom = true
 config.use_fancy_tab_bar = false
 config.window_padding = {
 	left = "2cell",
@@ -63,6 +67,7 @@ config.visual_bell = {
 }
 config.colors = {
 	visual_bell = "#fee000",
+	compose_cursor = "orange", -- cursor colour while the leader is pending
 }
 
 ---------------------------------------------------------------------------
@@ -116,11 +121,10 @@ end)
 -- Keys. WezTerm's default bindings stay active alongside these.
 ---------------------------------------------------------------------------
 
--- The leader chord. keymap.apply_to_config below reads it, binds it to the
--- leader popup and clears it, so the timeout does not apply: the popup stays
--- open until a key is pressed or Esc. Entries with mods = "LEADER" are what
--- the popup lists.
-config.leader = { key = "a", mods = "CTRL", timeout_milliseconds = 1000 }
+-- The leader chord. While it is pending the cursor turns orange and the status
+-- bar lists the entries below that have mods = "LEADER". The timeout is long
+-- enough to read them; any other key ends the leader and is swallowed.
+config.leader = { key = "a", mods = "CTRL", timeout_milliseconds = 2000 }
 
 config.keys = {
 	-- Panes: mod+d splits side by side, mod+shift+d stacks.
@@ -168,9 +172,10 @@ config.keys = {
 	{ key = "Backspace", mods = "CTRL", action = act.SendKey({ key = "w", mods = "CTRL" }) },
 }
 
--- keymap.lua: CTRL+a opens the leader popup; leader then ? opens the keymap
--- menu (bindings, free chords, OS-reserved shortcuts, action reference).
--- Popup labels are derived from the action; override any by key:
+-- keymap.lua: CTRL+a shows the leader keys in the status bar; leader then ?
+-- opens the keymap menu (leader keys, bindings, free chords, OS-reserved
+-- shortcuts, action reference). Hint labels are derived from the action;
+-- override any by key:
 --   labels = { ["|"] = "split side by side", ["CTRL+a"] = "literal CTRL+a" }
 keymap.apply_to_config(config, {
 	menu_key = { key = "?", mods = "LEADER|SHIFT" },

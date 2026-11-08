@@ -1,16 +1,19 @@
 -- keymap.lua: a small WezTerm plugin for seeing and choosing key bindings.
 --
 -- What it adds (all opt-out via `opts`):
---   * Leader popup (which-key style): the leader chord opens an overlay that
---     lists every LEADER binding with a short label; pressing the binding's
---     key runs it at once. Esc cancels, / filters. config.leader is read for
---     the chord and then unset, so the overlay replaces WezTerm's native
---     leader (which has no way to show hints).
---   * A keymap menu on <leader> ? with fuzzy-searchable lists:
+--   * Leader hints (which-key style): while the native leader is pending, the
+--     right side of the status bar lists every LEADER binding with a short
+--     label (`h pane ← · | split │ · ...`). The leader itself is untouched, so
+--     real chords work (|, CTRL+a) and the timeout applies. When idle the bar
+--     shows a dim reminder of the leader chord.
+--   * A keymap menu on <leader> ?, built from InputSelector pages with a
+--     breadcrumb title. Navigation pages take one keypress; Esc goes back one
+--     page and closes only from the top. Leaf lists are fuzzy-searchable.
+--       Leader keys      every leader binding with its label; Enter runs it
 --       Bindings         every active chord, built-in and custom; Enter runs it
---       Chord audit      free / taken chords per modifier; Enter copies a
+--       Free chords      free / taken chords per modifier; Enter copies a
 --                        ready-to-paste `{ key = ..., mods = ..., action = ... }`
---       System shortcuts what the desktop (KDE Plasma, macOS) grabs before
+--       OS shortcuts     what the desktop (KDE Plasma, macOS) grabs before
 --                        WezTerm sees the key, plus the CTRL/ALT chords the shell
 --                        itself uses
 --       Actions          KeyAssignment reference; Enter opens the docs page
@@ -40,8 +43,9 @@ local M = {}
 
 local DEFAULTS = {
 	menu_key = { key = "?", mods = "LEADER|SHIFT" },
-	popup = true, -- replace the native leader with the which-key overlay
-	labels = {}, -- popup label overrides, keyed by the key as the popup shows it ("|", "CTRL+a")
+	hints = true, -- show the leader bindings in the status bar while the leader is pending
+	idle_hint = true, -- when the leader is not pending, show a dim "<leader> keys" reminder
+	labels = {}, -- hint label overrides, keyed by the key as the hint shows it ("|", "CTRL+a")
 	warn_on_load = true, -- wezterm.log_warn for custom chords a desktop shortcut shadows
 	report_path = nil, -- defaults to $XDG_CACHE_HOME/wezterm/keymap.txt
 }
@@ -562,7 +566,7 @@ local COLOR = {
 	free = { AnsiColor = "Green" },
 	dim = { AnsiColor = "Grey" },
 }
-local LEGEND = "blue built-in · green yours/free · yellow overrides a default · red OS grabs it · purple shell"
+local LEGEND = "blue built-in · green yours/free · yellow overrides a default · red OS · purple shell"
 
 -- InputSelector labels go through the same parser as the status bar, so
 -- wezterm.format escapes render as colours.
@@ -599,20 +603,17 @@ function M.report(config)
 	line("WezTerm keymap report")
 	line(string.rep("=", 21))
 	line()
-	if M.leader_chord then
-		line("leader: " .. M.leader_chord .. " opens the leader popup; press a key below to run it")
-	elseif config.leader then
-		line("leader: " .. chord(norm(config.leader.key, config.leader.mods)) .. " (" .. tostring(config.leader.timeout_milliseconds or 1000) .. "ms)")
+	if config.leader then
+		line("leader: " .. chord(norm(config.leader.key, config.leader.mods)) .. " (" .. tostring(config.leader.timeout_milliseconds or 1000) .. "ms); the status bar lists the keys below while it is pending")
 	else
 		line("leader: none")
 	end
 	if M.leader_entries then
 		line()
-		line("Leader popup")
-		line(string.rep("-", 12))
+		line("Leader keys")
+		line(string.rep("-", 11))
 		for _, e in ipairs(M.leader_entries) do
-			local press = e.quick ~= e.key and ("(press " .. e.quick .. ")") or ""
-			line("  " .. pad(e.display, 10) .. pad(press, 12) .. pad(e.label, 24) .. M.describe(e.action))
+			line("  " .. pad(e.display, 10) .. pad(e.label, 24) .. M.describe(e.action))
 		end
 	end
 	line()
@@ -723,19 +724,47 @@ function M.report(config)
 end
 
 ---------------------------------------------------------------------------
--- UI: InputSelector menus.
+-- UI: InputSelector pages. A page is a list with a breadcrumb title and a
+-- parent; cancelling it (Esc, CTRL+c, CTRL+g) reopens the parent, so Esc
+-- walks back up one page at a time and closes only from the top. Navigation
+-- pages take one keypress (the overlay prints the quick key before each row);
+-- leaf lists are fuzzy-searchable.
 ---------------------------------------------------------------------------
 
-local function selector(title, choices, on_select, description)
+local CRUMB = " › "
+
+-- p.crumbs    breadcrumb, e.g. { "Keymap", "Bindings" }
+-- p.choices   InputSelector choices
+-- p.on_select function(window, pane, id, label)
+-- p.parent    function(window) returning the parent page's action, or nil at the top
+-- p.quick     true for one-key navigation (optional p.alphabet); otherwise fuzzy
+-- p.hint      what Enter does, e.g. "Enter runs it"
+local function page(p)
+	local title = table.concat(p.crumbs, CRUMB)
+	local back = p.parent and "Esc back" or "Esc closes"
+	local bits = {}
+	if p.quick then
+		bits[#bits + 1] = "press a key"
+	end
+	if p.hint then
+		bits[#bits + 1] = p.hint
+	end
+	bits[#bits + 1] = back
+	if p.quick then
+		bits[#bits + 1] = "/ filters"
+	end
 	return act.InputSelector({
 		title = title,
-		choices = choices,
-		fuzzy = true,
-		description = description,
-		fuzzy_description = "Type to filter " .. title:lower() .. ": ",
+		choices = p.choices,
+		alphabet = p.alphabet,
+		fuzzy = not p.quick,
+		description = table.concat(bits, " · "),
+		fuzzy_description = (p.hint and (p.hint .. " · ") or "") .. back .. " · filter: ",
 		action = wezterm.action_callback(function(window, pane, id, label)
 			if id then
-				on_select(window, pane, id, label)
+				p.on_select(window, pane, id, label)
+			elseif p.parent then
+				window:perform_action(p.parent(window), pane)
 			end
 		end),
 	})
@@ -745,8 +774,39 @@ local function mods_label(mods)
 	return mods ~= "" and mods or "(no modifier)"
 end
 
+local menu_page -- the top page; defined last, every page's parent chain ends here
+
+-- Every leader binding with its label and the action it runs.
+local function leader_page(opts)
+	local entries = M.leader_entries or {}
+	local choices = {}
+	for i, e in ipairs(entries) do
+		choices[i] = {
+			id = tostring(i),
+			label = colored(pad((M.leader_chord or "LEADER") .. " " .. e.display, 18), COLOR.custom) .. pad(e.label, 22) .. colored(M.describe(e.action), COLOR.dim),
+		}
+	end
+	return page({
+		crumbs = { "Keymap", "Leader keys" },
+		choices = choices,
+		quick = true,
+		hint = "Enter runs it",
+		on_select = function(w, p, id)
+			local e = entries[tonumber(id)]
+			if e then
+				w:perform_action(e.action, p)
+			end
+		end,
+		parent = function()
+			return menu_page(opts)
+		end,
+	})
+end
+
+local bindings_page -- forward: the leaf list's parent
+
 -- Bindings for one modifier set (or all when mods is nil), coloured by class.
-local function bindings_list(window, mods)
+local function bindings_list(window, mods, opts)
 	local config = window:effective_config()
 	local all = M.bindings(config)
 	local _, system = M.system_shortcuts()
@@ -765,17 +825,25 @@ local function bindings_list(window, mods)
 			choices[#choices + 1] = { id = tostring(#list), label = colored(text, COLOR[class]) .. colored(tag, COLOR.dim) }
 		end
 	end
-	return selector("Bindings " .. (mods and mods_label(mods) or "(all)"), choices, function(w, p, id)
-		local b = list[tonumber(id)]
-		if b then
-			w:perform_action(b.action, p)
-		end
-	end, "Enter runs the binding · " .. LEGEND)
+	return page({
+		crumbs = { "Keymap", "Bindings", mods and mods_label(mods) or "all" },
+		choices = choices,
+		hint = "Enter runs it · " .. LEGEND,
+		on_select = function(w, p, id)
+			local b = list[tonumber(id)]
+			if b then
+				w:perform_action(b.action, p)
+			end
+		end,
+		parent = function(w)
+			return bindings_page(w, opts)
+		end,
+	})
 end
 
--- First pick a modifier set; each row shows how many bindings it holds and
+-- Pick a modifier set first; each row shows how many bindings it holds and
 -- the class mix, so the long default tables stay out of the way.
-local function bindings_selector(window)
+bindings_page = function(window, opts)
 	local config = window:effective_config()
 	local all = M.bindings(config)
 	local _, system = M.system_shortcuts()
@@ -811,13 +879,24 @@ local function bindings_selector(window)
 		end
 		choices[#choices + 1] = { id = g.mods, label = pad(mods_label(g.mods), 18) .. table.concat(bits, "  ") }
 	end
-	return selector("Bindings", choices, function(w, p, id)
-		w:perform_action(bindings_list(w, id ~= "*" and id or nil), p)
-	end, "Pick a modifier set · " .. LEGEND)
+	return page({
+		crumbs = { "Keymap", "Bindings" },
+		choices = choices,
+		quick = true,
+		hint = "pick a modifier set · " .. LEGEND,
+		on_select = function(w, p, id)
+			w:perform_action(bindings_list(w, id ~= "*" and id or nil, opts), p)
+		end,
+		parent = function()
+			return menu_page(opts)
+		end,
+	})
 end
 
+local audit_page -- forward: the leaf list's parent
+
 -- Chord audit for one modifier set: every key, coloured by who owns it.
-local function audit_list(window, mods)
+local function audit_list(window, mods, opts)
 	local rows = {}
 	for _, r in ipairs(M.audit(window:effective_config())) do
 		if r.mods == mods then
@@ -830,18 +909,26 @@ local function audit_list(window, mods)
 		local class = ({ free = "free", wezterm = "builtin", system = "system", shell = "shell" })[r.status]
 		choices[#choices + 1] = { id = tostring(i), label = colored(pad(r.key, 12) .. " " .. pad(what, 8), COLOR[class]) .. colored(r.desc, COLOR.dim) }
 	end
-	return selector("Chord audit " .. mods, choices, function(w, _, id)
-		local r = rows[tonumber(id)]
-		if not r then
-			return
-		end
-		local snippet = string.format('{ key = "%s", mods = "%s", action = act.Nop },', r.key:gsub('"', '\\"'), r.mods)
-		w:copy_to_clipboard(snippet, "Clipboard")
-		w:toast_notification("keymap", "Copied: " .. snippet .. (r.status ~= "free" and ("\n(" .. r.status .. ": " .. r.desc .. ")") or ""), nil, 4000)
-	end, "Enter copies a config line · " .. LEGEND)
+	return page({
+		crumbs = { "Keymap", "Free chords", mods },
+		choices = choices,
+		hint = "Enter copies a config line · " .. LEGEND,
+		on_select = function(w, _, id)
+			local r = rows[tonumber(id)]
+			if not r then
+				return
+			end
+			local snippet = string.format('{ key = "%s", mods = "%s", action = act.Nop },', r.key:gsub('"', '\\"'), r.mods)
+			w:copy_to_clipboard(snippet, "Clipboard")
+			w:toast_notification("keymap", "Copied: " .. snippet .. (r.status ~= "free" and ("\n(" .. r.status .. ": " .. r.desc .. ")") or ""), nil, 4000)
+		end,
+		parent = function(w)
+			return audit_page(w, opts)
+		end,
+	})
 end
 
-local function audit_selector(window)
+audit_page = function(window, opts)
 	local rows = M.audit(window:effective_config())
 	local counts = {}
 	for _, r in ipairs(rows) do
@@ -864,12 +951,21 @@ local function audit_selector(window)
 		end
 		choices[#choices + 1] = { id = m, label = pad(m, 18) .. table.concat(bits, "  ") }
 	end
-	return selector("Chord audit", choices, function(w, p, id)
-		w:perform_action(audit_list(w, id), p)
-	end, "Pick a modifier set · " .. LEGEND)
+	return page({
+		crumbs = { "Keymap", "Free chords" },
+		choices = choices,
+		quick = true,
+		hint = "pick a modifier set · " .. LEGEND,
+		on_select = function(w, p, id)
+			w:perform_action(audit_list(w, id, opts), p)
+		end,
+		parent = function()
+			return menu_page(opts)
+		end,
+	})
 end
 
-local function system_selector()
+local function system_page(opts)
 	local label, system = M.system_shortcuts()
 	local shell = M.shell_shortcuts()
 	local rows = {}
@@ -886,25 +982,41 @@ local function system_selector()
 	for i, r in ipairs(rows) do
 		choices[#choices + 1] = { id = tostring(i), label = colored(pad(r.chord, 28), COLOR[r.class]) .. " " .. r.desc }
 	end
-	return selector("System shortcuts", choices, function(w, _, id)
-		local r = rows[tonumber(id)]
-		if r then
-			w:copy_to_clipboard(r.chord, "Clipboard")
-			w:toast_notification("keymap", "Copied: " .. r.chord, nil, 2000)
-		end
-	end)
+	return page({
+		crumbs = { "Keymap", "OS & shell shortcuts" },
+		choices = choices,
+		hint = "Enter copies the chord",
+		on_select = function(w, _, id)
+			local r = rows[tonumber(id)]
+			if r then
+				w:copy_to_clipboard(r.chord, "Clipboard")
+				w:toast_notification("keymap", "Copied: " .. r.chord, nil, 2000)
+			end
+		end,
+		parent = function()
+			return menu_page(opts)
+		end,
+	})
 end
 
-local function actions_selector()
+local function actions_page(opts)
 	local choices = {}
 	for _, group in ipairs(ACTIONS) do
 		for _, n in ipairs(group[2]) do
 			choices[#choices + 1] = { id = n, label = pad(n, 42) .. group[1] }
 		end
 	end
-	return selector("Actions", choices, function(_, _, id)
-		wezterm.open_with(ACTIONS_DOC .. id .. ".html")
-	end)
+	return page({
+		crumbs = { "Keymap", "Actions" },
+		choices = choices,
+		hint = "Enter opens the docs page",
+		on_select = function(_, _, id)
+			wezterm.open_with(ACTIONS_DOC .. id .. ".html")
+		end,
+		parent = function()
+			return menu_page(opts)
+		end,
+	})
 end
 
 local function report_action(opts)
@@ -926,54 +1038,63 @@ local function report_action(opts)
 	end)
 end
 
-function M.menu_action(opts)
-	opts = opts or DEFAULTS
-	local menu_key = opts.menu_key and chord(norm(opts.menu_key.key, opts.menu_key.mods)) or "keymap"
-	return selector("Keymap menu", {
-		{ id = "bindings", label = pad("Bindings", 20) .. "every active chord; Enter runs it" },
-		{ id = "audit", label = pad("Chord audit", 20) .. "free / taken chords per modifier; Enter copies a config line" },
-		{ id = "system", label = pad("System shortcuts", 20) .. "what the desktop and the shell grab first" },
-		{ id = "actions", label = pad("Actions", 20) .. "KeyAssignment reference; Enter opens the docs" },
-		{ id = "report", label = pad("Full report", 20) .. "everything as text in a new tab (" .. menu_key .. ")" },
-	}, function(window, pane, id)
-		if id == "bindings" then
-			window:perform_action(bindings_selector(window), pane)
-		elseif id == "audit" then
-			window:perform_action(audit_selector(window), pane)
-		elseif id == "system" then
-			window:perform_action(system_selector(), pane)
-		elseif id == "actions" then
-			window:perform_action(actions_selector(), pane)
-		elseif id == "report" then
-			window:perform_action(report_action(opts), pane)
-		end
-	end)
-end
-
----------------------------------------------------------------------------
--- Leader popup: an InputSelector whose quick-select alphabet is the set of
--- leader keys, so <leader> h runs the h binding without pressing Enter.
----------------------------------------------------------------------------
-
--- US-layout unshifted twin of a shifted character.
-local SHIFT_PAIRS = {
-	["~"] = "`", ["!"] = "1", ["@"] = "2", ["#"] = "3", ["$"] = "4", ["%"] = "5", ["^"] = "6",
-	["&"] = "7", ["*"] = "8", ["("] = "9", [")"] = "0", ["_"] = "-", ["+"] = "=", ["{"] = "[",
-	["}"] = "]", ["|"] = "\\", [":"] = ";", ['"'] = "'", ["<"] = ",", [">"] = ".", ["?"] = "/",
+-- The top page. The alphabet gives each row a mnemonic key, in row order.
+local MENU = {
+	{ "l", "leader", "Leader keys", "every leader binding with its label; Enter runs it" },
+	{ "b", "bindings", "Bindings", "every active chord by modifier set; Enter runs it" },
+	{ "f", "audit", "Free chords", "free / taken chords per modifier; Enter copies a config line" },
+	{ "o", "system", "OS & shell shortcuts", "what the desktop and the shell grab first" },
+	{ "a", "actions", "Actions", "KeyAssignment reference; Enter opens the docs" },
+	{ "r", "report", "Full report", "everything as text in a new tab" },
 }
 
-local function quick_candidate(key)
-	if #key ~= 1 then
-		return nil
+menu_page = function(opts)
+	local choices, alphabet = {}, {}
+	for _, row in ipairs(MENU) do
+		alphabet[#alphabet + 1] = row[1]
+		choices[#choices + 1] = { id = row[2], label = pad(row[3], 22) .. colored(row[4], COLOR.dim) }
 	end
-	local c = SHIFT_PAIRS[key] or key:lower()
-	if c == "/" then
-		return nil
-	end
-	return c
+	return page({
+		crumbs = { "Keymap" },
+		choices = choices,
+		quick = true,
+		alphabet = table.concat(alphabet),
+		on_select = function(window, pane, id)
+			local open = {
+				leader = function()
+					return leader_page(opts)
+				end,
+				bindings = function()
+					return bindings_page(window, opts)
+				end,
+				audit = function()
+					return audit_page(window, opts)
+				end,
+				system = function()
+					return system_page(opts)
+				end,
+				actions = function()
+					return actions_page(opts)
+				end,
+				report = function()
+					return report_action(opts)
+				end,
+			}
+			window:perform_action(open[id](), pane)
+		end,
+	})
 end
 
-local function leader_popup(config, opts)
+function M.menu_action(opts)
+	return menu_page(setmetatable(opts or {}, { __index = DEFAULTS }))
+end
+
+---------------------------------------------------------------------------
+-- Leader hints: the LEADER bindings, labelled, shown in the status bar
+-- while the native leader is pending.
+---------------------------------------------------------------------------
+
+local function leader_entries(config, opts)
 	local entries = {}
 	for _, e in ipairs(config.keys or {}) do
 		local key, mods = norm(e.key, e.mods)
@@ -1016,62 +1137,32 @@ local function leader_popup(config, opts)
 		end
 		return a.extra < b.extra
 	end)
+	return entries
+end
 
-	-- Quick keys. The overlay only matches unmodified keys, so a shifted key
-	-- (| ? A) is reached through its unshifted twin (\ / a) when that is
-	-- free; / is the overlay's filter key and never a quick key. Whatever is
-	-- left gets an unused digit, so every entry stays one keypress.
-	local ordered, alphabet, used, rest = {}, {}, {}, {}
-	for _, e in ipairs(entries) do
-		local c = quick_candidate(e.key)
-		if c and not used[c] then
-			used[c] = true
-			ordered[#ordered + 1] = e
-			alphabet[#alphabet + 1] = c
-		else
-			rest[#rest + 1] = e
+local function status_text(opts, pending)
+	local parts = {}
+	if pending then
+		parts[#parts + 1] = { Foreground = COLOR.custom }
+		parts[#parts + 1] = { Attribute = { Intensity = "Bold" } }
+		parts[#parts + 1] = { Text = M.leader_chord }
+		parts[#parts + 1] = "ResetAttributes"
+		for _, e in ipairs(M.leader_entries) do
+			parts[#parts + 1] = { Foreground = COLOR.dim }
+			parts[#parts + 1] = { Text = " · " }
+			parts[#parts + 1] = { Foreground = COLOR.custom }
+			parts[#parts + 1] = { Attribute = { Intensity = "Bold" } }
+			parts[#parts + 1] = { Text = e.display }
+			parts[#parts + 1] = "ResetAttributes"
+			parts[#parts + 1] = { Text = " " .. e.label }
 		end
+		parts[#parts + 1] = { Text = " " }
+	elseif opts.idle_hint then
+		parts[#parts + 1] = { Foreground = COLOR.dim }
+		parts[#parts + 1] = { Text = M.leader_chord .. " keys " }
+		parts[#parts + 1] = "ResetAttributes"
 	end
-	local spare = {}
-	for d in ("1234567890"):gmatch(".") do
-		if not used[d] then
-			spare[#spare + 1] = d
-		end
-	end
-	for _, e in ipairs(rest) do
-		local d = table.remove(spare, 1)
-		if d then
-			used[d] = true
-			alphabet[#alphabet + 1] = d
-			ordered[#ordered + 1] = e
-			wezterm.log_info("keymap: leader popup: " .. e.display .. " has no unshifted quick key; press " .. d .. " for it")
-		else
-			wezterm.log_warn("keymap: leader popup: " .. e.display .. " left out; too many entries for one-key selection")
-		end
-	end
-
-	local choices = {}
-	for i, e in ipairs(ordered) do
-		e.quick = alphabet[i]
-		-- The overlay prints the quick key itself; repeat the real key only
-		-- when it differs (CTRL+a, or | reached through \).
-		local shown = e.display ~= e.quick and pad(e.display, 8) or ""
-		choices[i] = { id = tostring(i), label = shown .. e.label }
-	end
-	M.leader_entries = ordered
-	return act.InputSelector({
-		title = "Leader",
-		choices = choices,
-		alphabet = table.concat(alphabet),
-		description = "press the key · Esc cancels · / filters (shifted keys: press the unshifted key shown)",
-		fuzzy_description = "Leader: ",
-		action = wezterm.action_callback(function(window, pane, id)
-			local e = ordered[tonumber(id or "")]
-			if e then
-				window:perform_action(e.action, pane)
-			end
-		end),
-	})
+	return wezterm.format(parts)
 end
 
 ---------------------------------------------------------------------------
@@ -1086,11 +1177,16 @@ function M.apply_to_config(config, opts)
 		config.keys[#config.keys + 1] = { key = opts.menu_key.key, mods = opts.menu_key.mods, action = M.menu_action(opts) }
 	end
 
-	if opts.popup and config.leader then
-		local leader = config.leader
-		config.keys[#config.keys + 1] = { key = leader.key, mods = leader.mods, action = leader_popup(config, opts) }
-		M.leader_chord = chord(norm(leader.key, leader.mods))
-		config.leader = nil -- the overlay owns the chord now; LEADER entries stay as its source
+	if config.leader then
+		M.leader_chord = chord(norm(config.leader.key, config.leader.mods))
+		M.leader_entries = leader_entries(config, opts)
+		if opts.hints then
+			-- WezTerm runs the status handlers when the leader is pressed and
+			-- when it ends, so the strip appears and clears at once.
+			wezterm.on("update-status", function(window)
+				window:set_right_status(status_text(opts, window:leader_is_active()))
+			end)
+		end
 	end
 
 	if opts.warn_on_load then
