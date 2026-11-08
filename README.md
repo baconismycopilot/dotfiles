@@ -260,6 +260,7 @@ zsh/.zshrc .zprofile .zshenv .p10k.zsh   zsh + oh-my-zsh + powerlevel10k (symlin
 zsh/.config/shell/aliases.zsh            shared aliases (host-specific ones go in ~/.zshrc.local)
 zsh/.config/shell/vims.env               nvim NVIM_APPNAME aliases
 zsh/.config/shell/onedark-*.zsh          onedark colors for zsh-syntax-highlighting
+zsh/.local/bin/reboot-required           Arch/CachyOS: exit 0 and say why when a reboot is pending
 wezterm/wezterm.lua           WezTerm config (symlinked to $XDG_CONFIG_HOME/wezterm/)
 wezterm/keymap.lua            keymap plugin: leader hints, bindings/free-chord/OS-shortcut menu
 kitty/kitty.conf              kitty entry point, includes only (symlinked to $XDG_CONFIG_HOME/kitty/)

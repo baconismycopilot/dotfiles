@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# reboot-required: say whether a reboot is pending on an Arch/CachyOS host.
+#
+# Prints the reasons and exits 0 when a reboot is pending, prints nothing
+# useful and exits 1 when the system is clean, exits 2 off pacman systems.
+#
+# Why this exists: the "Reboot recommended!" desktop popup after an update
+# comes from a pacman hook (cachyos-hooks: cachyos-reboot-required). It is
+# fire-and-forget and leaves no flag file behind, so there is nothing like
+# Debian's /run/reboot-required to test. This script recomputes the answer
+# from two stateless signals instead:
+#
+#   1. the running kernel's /usr/lib/modules/<release>/vmlinuz is gone,
+#      which is what arch-update/cachy-update itself checks;
+#   2. /var/log/pacman.log records an upgrade, since boot, of a package
+#      matching a Target glob in the cachyos-reboot-required hook
+#      (kernels, nvidia, mesa, systemd, microcode, mkinitcpio, xorg, ...).
+#
+# Signal 2 reads the globs from the installed hook so the list follows
+# cachyos-hooks updates. Without that hook only signal 1 applies.
+set -euo pipefail
+
+log=/var/log/pacman.log
+hook=/usr/share/libalpm/hooks/cachyos-reboot-required.hook
+
+if [ ! -r "$log" ] || [ ! -r /proc/stat ]; then
+    echo "reboot-required: not a pacman system" >&2
+    exit 2
+fi
+
+reasons=()
+
+# 1. Running kernel still installed?
+running="$(uname -r)"
+[ -f "/usr/lib/modules/$running/vmlinuz" ] || reasons+=("kernel $running is no longer installed")
+
+# 2. Core packages upgraded since boot?
+if [ -r "$hook" ]; then
+    # Hook Target globs -> one extended regex: "linux-cachyos*" -> "linux-cachyos.*"
+    pattern="$(sed -n 's/^Target *= *//p' "$hook" | sed 's/[.]/\\./g; s/\*/.*/g' | paste -sd'|' -)"
+    # Boot time in the same local ISO form pacman.log uses, e.g. [2026-11-07T22:58:16
+    boot="[$(date -d "@$(awk '/^btime/ {print $2}' /proc/stat)" +%Y-%m-%dT%H:%M:%S)"
+    while IFS= read -r pkg; do
+        [[ "$pkg" =~ ^($pattern)$ ]] && reasons+=("$pkg upgraded since boot")
+    done < <(awk -v boot="$boot" '$1 > boot && $2 == "[ALPM]" && $3 == "upgraded" {print $4}' "$log")
+fi
+
+if ((${#reasons[@]})); then
+    echo "Reboot recommended:"
+    printf '  - %s\n' "${reasons[@]}"
+    exit 0
+fi
+
+echo "No reboot needed"
+exit 1
