@@ -134,6 +134,10 @@ set -o vi
 # LM Studio CLI (lms) — only if installed (macOS).
 [[ -d "$HOME/.lmstudio/bin" ]] && export PATH="$PATH:$HOME/.lmstudio/bin"
 
+# Arch/CachyOS: print the reasons when a reboot is pending, nothing otherwise
+# (zsh/.local/bin/reboot-required). Guarded on pacman.log so other OSes skip it.
+[[ -r /var/log/pacman.log ]] && reboot-required 2>/dev/null
+
 # Per-host overrides — NOT tracked in the dotfiles repo. Put machine-specific
 # PATH entries, aliases (e.g. ssh shortcuts), and tweaks here. Example:
 #   alias superbacon='ssh user@192.168.x.x'

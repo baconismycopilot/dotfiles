@@ -2,7 +2,8 @@
 # reboot-required: say whether a reboot is pending on an Arch/CachyOS host.
 #
 # Prints the reasons and exits 0 when a reboot is pending, prints nothing
-# useful and exits 1 when the system is clean, exits 2 off pacman systems.
+# and exits 1 when the system is clean (so .zshrc can run it at startup
+# without noise), exits 2 off pacman systems.
 #
 # Why this exists: the "Reboot recommended!" desktop popup after an update
 # comes from a pacman hook (cachyos-hooks: cachyos-reboot-required). It is
@@ -51,5 +52,4 @@ if ((${#reasons[@]})); then
     exit 0
 fi
 
-echo "No reboot needed"
 exit 1
